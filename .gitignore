@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+release/
+test-results/
+playwright-report/
+.DS_Store
+.grove-test/
+resources/arm64/
+resources/x64/
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key

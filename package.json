@@ -1,0 +1,89 @@
+{
+  "name": "grove",
+  "version": "0.1.2",
+  "description": "A quiet workspace for your code, projects and agents",
+  "private": true,
+  "main": "dist-electron/main.cjs",
+  "author": "Grove",
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "node scripts/prepare-native.mjs",
+    "dev": "npm run prepare:resources && node scripts/dev.mjs",
+    "build": "tsc --noEmit && vite build --logLevel warn && node scripts/build-electron.mjs",
+    "start": "electron .",
+    "test": "vitest run",
+    "test:e2e": "npm run prepare:resources && npm run build && playwright test",
+    "package:arm64": "npm run prepare:resources && npm run build && electron-builder --mac dmg --arm64",
+    "package:x64": "npm run prepare:resources && npm run build && electron-builder --mac dmg --x64",
+    "prepare:resources": "node scripts/prepare-resources.mjs",
+    "package": "npm run prepare:resources && npm run build && electron-builder --mac dmg --arm64 --x64",
+    "test:packaged": "playwright test",
+    "format": "prettier --write src electron shared tests scripts/*.mjs *.json *.ts *.md",
+    "format:check": "prettier --check src electron shared tests scripts/*.mjs *.json *.ts *.md"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "chokidar": "^4.0.3",
+    "lucide-react": "^0.468.0",
+    "monaco-editor": "^0.52.2",
+    "node-pty": "^1.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^41.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.0",
+    "vite": "^6.3.0",
+    "vitest": "^4.1.11"
+  },
+  "build": {
+    "appId": "app.grove.editor",
+    "productName": "Grove",
+    "directories": {
+      "output": "release/0.1.2"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg"
+      ],
+      "identity": null,
+      "artifactName": "Grove-${version}-${arch}.${ext}",
+      "icon": "resources/icon.icns"
+    },
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": "resources/${arch}",
+        "to": "bin",
+        "filter": [
+          "rg",
+          "LICENSE-MIT",
+          "COPYING",
+          "UNLICENSE"
+        ]
+      }
+    ]
+  },
+  "engines": {
+    "node": "^22.0.0 || >=24.0.0"
+  }
+}
