@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -22,6 +22,70 @@ type Props = {
   onError(error: unknown): void;
   onRelocate(): void;
 };
+const TreeRow = memo(function TreeRow({
+  entry,
+  depth,
+  selected,
+  expanded,
+  onToggle,
+  onOpen,
+  onAction,
+}: {
+  entry: FileEntry;
+  depth: number;
+  selected: boolean;
+  expanded: boolean;
+  onToggle(path: string): void;
+  onOpen(path: string): void;
+  onAction(entry: FileEntry): void;
+}) {
+  return (
+    <div
+      className={`tree-row ${selected ? "selected" : ""}`}
+      style={{ paddingLeft: 12 + depth * 14 }}
+    >
+      <button
+        className="tree-item"
+        title={entry.path}
+        onClick={() =>
+          entry.directory ? onToggle(entry.path) : onOpen(entry.path)
+        }
+      >
+        {entry.directory ? (
+          expanded ? (
+            <ChevronDown size={12} />
+          ) : (
+            <ChevronRight size={12} />
+          )
+        ) : (
+          <span className="tree-spacer" />
+        )}
+        {entry.directory ? (
+          expanded ? (
+            <FolderOpen size={15} className="folder-icon" />
+          ) : (
+            <Folder size={15} className="folder-icon" />
+          )
+        ) : entry.symlink ? (
+          <Link2 size={14} />
+        ) : (
+          <FileCode2
+            size={14}
+            className={`file-icon ext-${entry.name.split(".").pop()}`}
+          />
+        )}
+        <span>{entry.name}</span>
+      </button>
+      <button
+        className="row-action"
+        title={`${entry.name} 操作`}
+        onClick={() => onAction(entry)}
+      >
+        <MoreHorizontal size={14} />
+      </button>
+    </div>
+  );
+});
 function Directory({
   parent,
   depth,
@@ -33,6 +97,16 @@ function Directory({
 }) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = useCallback(
+    (path: string) =>
+      setExpanded((old) => {
+        const next = new Set(old);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      }),
+    [],
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -72,57 +146,15 @@ function Directory({
     <>
       {entries.map((entry) => (
         <div key={entry.path}>
-          <div
-            className={`tree-row ${props.activePath === entry.path ? "selected" : ""}`}
-            style={{ paddingLeft: 12 + depth * 14 }}
-          >
-            <button
-              className="tree-item"
-              title={entry.path}
-              onClick={() =>
-                entry.directory
-                  ? setExpanded((old) => {
-                      const next = new Set(old);
-                      if (next.has(entry.path)) next.delete(entry.path);
-                      else next.add(entry.path);
-                      return next;
-                    })
-                  : props.onOpen(entry.path)
-              }
-            >
-              {entry.directory ? (
-                expanded.has(entry.path) ? (
-                  <ChevronDown size={12} />
-                ) : (
-                  <ChevronRight size={12} />
-                )
-              ) : (
-                <span className="tree-spacer" />
-              )}
-              {entry.directory ? (
-                expanded.has(entry.path) ? (
-                  <FolderOpen size={15} className="folder-icon" />
-                ) : (
-                  <Folder size={15} className="folder-icon" />
-                )
-              ) : entry.symlink ? (
-                <Link2 size={14} />
-              ) : (
-                <FileCode2
-                  size={14}
-                  className={`file-icon ext-${entry.name.split(".").pop()}`}
-                />
-              )}
-              <span>{entry.name}</span>
-            </button>
-            <button
-              className="row-action"
-              title={`${entry.name} 操作`}
-              onClick={() => props.onAction(entry)}
-            >
-              <MoreHorizontal size={14} />
-            </button>
-          </div>
+          <TreeRow
+            entry={entry}
+            depth={depth}
+            selected={props.activePath === entry.path}
+            expanded={expanded.has(entry.path)}
+            onToggle={toggle}
+            onOpen={props.onOpen}
+            onAction={props.onAction}
+          />
           {entry.directory && expanded.has(entry.path) && (
             <Directory parent={entry.path} depth={depth + 1} props={props} />
           )}
@@ -139,7 +171,7 @@ function Directory({
     </>
   );
 }
-export default function FileTree(props: Props) {
+function FileTree(props: Props) {
   const [extraRevision, refresh] = useState(0);
   return (
     <>
@@ -180,3 +212,5 @@ export default function FileTree(props: Props) {
     </>
   );
 }
+
+export default memo(FileTree);

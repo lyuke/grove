@@ -44,9 +44,10 @@ import GitPanel from "./components/GitPanel";
 import SearchPanel from "./components/SearchPanel";
 import TerminalPane from "./components/TerminalPane";
 
-const Editor = lazy(() => import("./components/Editor"));
+const loadEditor = () => import("./components/Editor");
+const Editor = lazy(loadEditor);
 const DiffView = lazy(() =>
-  import("./components/Editor").then((m) => ({ default: m.DiffView })),
+  loadEditor().then((m) => ({ default: m.DiffView })),
 );
 const api = window.grove;
 const basename = (path: string) => path.split("/").pop() || path;
@@ -55,6 +56,12 @@ const cleanError = (error: unknown) =>
     /^Error invoking remote method '[^']+': (Error: )?/,
     "",
   );
+// Keep expensive child props stable while callbacks still see the latest workspace.
+function useEvent<T extends (...args: any[]) => void>(callback: T): T {
+  const ref = useRef(callback);
+  ref.current = callback;
+  return useCallback(((...args) => ref.current(...args)) as T, []);
+}
 type DialogRequest = {
   title: string;
   description?: string;
@@ -286,6 +293,17 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!ready) return;
+    const idle = requestIdleCallback(
+      () => {
+        void loadEditor().catch(onError);
+      },
+      { timeout: 1000 },
+    );
+    return () => cancelIdleCallback(idle);
+  }, [ready, onError]);
+
   async function persistWorkspace() {
     if (!latest.current.settings || !ready)
       throw new Error("工作区仍在加载，请稍后重试");
@@ -471,6 +489,16 @@ export default function App() {
         },
     );
   }
+  const treeOpen = useEvent((file: string) => run(() => openFile(file)));
+  const treeCreate = useEvent((parent: string, directory: boolean) =>
+    run(() => createFile(parent, directory)),
+  );
+  const treeAction = useEvent((entry: FileEntry) =>
+    run(() => fileAction(entry)),
+  );
+  const treeRelocate = useEvent(() => {
+    if (project) run(() => projectAction(project, "relocate"));
+  });
   function switchProject(id: string) {
     setSettings((current) => current && { ...current, activeProject: id });
     setProjectMenu(null);
@@ -481,6 +509,7 @@ export default function App() {
     targetProject = projectId,
   ) {
     if (!targetProject) return;
+    void loadEditor().catch(onError);
     const key = `${targetProject}:${file}`;
     const existing = latest.current.docs.find((d) => d.key === key);
     if (!existing) {
@@ -1159,15 +1188,11 @@ export default function App() {
                     project={project}
                     revision={revision}
                     activePath={activeDoc?.path}
-                    onOpen={(file) => run(() => openFile(file))}
-                    onCreate={(parent, directory) =>
-                      run(() => createFile(parent, directory))
-                    }
-                    onAction={(entry) => run(() => fileAction(entry))}
+                    onOpen={treeOpen}
+                    onCreate={treeCreate}
+                    onAction={treeAction}
                     onError={onError}
-                    onRelocate={() =>
-                      run(() => projectAction(project, "relocate"))
-                    }
+                    onRelocate={treeRelocate}
                   />
                 ) : panel === "search" ? (
                   <SearchPanel

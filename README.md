@@ -6,10 +6,10 @@
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.2) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。本地构建的安装包位于 `release/0.1.2/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.3) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。本地构建的安装包位于 `release/0.1.3/`。
 
-- Apple Silicon：`Grove-0.1.2-arm64.dmg`
-- Intel：`Grove-0.1.2-x64.dmg`
+- Apple Silicon：`Grove-0.1.3-arm64.dmg`
+- Intel：`Grove-0.1.3-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -19,7 +19,7 @@
 
 Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你的仓库设置；需要交互认证或签名时可以在终端执行提交。搜索程序 ripgrep 已随安装包附带。
 
-构建与测试详情见 [VERIFY.md](VERIFY.md)。
+构建与测试详情见 [VERIFY.md](VERIFY.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 ## 第一版能力
 
@@ -77,8 +77,8 @@ npm run package        # 生成 arm64 和 x64 DMG
 验证打包后的应用：
 
 ```sh
-GROVE_EXECUTABLE="$PWD/release/0.1.2/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
-GROVE_EXECUTABLE="$PWD/release/0.1.2/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.3/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.3/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
 ```
 
 在 Apple Silicon 上运行 x64 版本需要 Rosetta；转译测试不能代替 Intel 实机测试。

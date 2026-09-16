@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import * as pty from "node-pty";
 import chokidar, { type FSWatcher } from "chokidar";
 import * as service from "./services";
@@ -14,6 +15,7 @@ let win: BrowserWindow;
 let settings: Settings = service.defaults();
 let dirty = false;
 let quitting = false;
+let shellEnvironment: Promise<void> = Promise.resolve();
 let pendingQuit:
   { id: string; timer: ReturnType<typeof setTimeout> } | undefined;
 const watchers = new Map<string, FSWatcher>();
@@ -233,15 +235,21 @@ function setupIPC() {
           ? path.join(process.resourcesPath, "bin", "rg")
           : path.join(__dirname, `../resources/${process.arch}/rg`),
       ),
-    gitStatus: (id) => service.gitStatus(project(id).path),
+    gitStatus: (id) =>
+      shellEnvironment.then(() => service.gitStatus(project(id).path)),
     gitDiff: (id, relative, staged) =>
-      service.gitDiff(project(id).path, relative, staged),
+      shellEnvironment.then(() =>
+        service.gitDiff(project(id).path, relative, staged),
+      ),
     gitStage: (id, relative, stage) =>
       locked(`git:${id}`, () =>
-        service.gitStage(project(id).path, relative, stage),
+        shellEnvironment.then(() =>
+          service.gitStage(project(id).path, relative, stage),
+        ),
       ),
     gitCommit: (id, message) =>
       locked(`git:${id}`, async () => {
+        await shellEnvironment;
         if (typeof message !== "string" || !message.trim())
           throw new Error("请填写提交信息");
         const root = project(id).path;
@@ -267,6 +275,7 @@ function setupIPC() {
         return service.git(root, ["commit", "-m", message]);
       }),
     terminalCreate: async (id) => {
+      await shellEnvironment;
       const p = project(id);
       await fs.access(p.path);
       const shellPath = process.env.SHELL || "/bin/zsh";
@@ -427,18 +436,21 @@ async function createWindow() {
   else await win.loadFile(path.join(__dirname, "../dist/index.html"));
 }
 app.whenReady().then(async () => {
-  // Finder launches do not inherit the shell's PATH. Load it once using the login shell.
-  try {
-    const result = execFileSync(
-      process.env.SHELL || "/bin/zsh",
-      ["-ilc", 'printf "\\n__GROVE_PATH__%s" "$PATH"'],
-      { encoding: "utf8", timeout: 5000 },
-    );
-    const marker = result.lastIndexOf("__GROVE_PATH__");
-    if (marker >= 0) process.env.PATH = result.slice(marker + 14).trim();
-  } catch {
-    process.env.PATH = `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
-  }
+  // Resolve the Finder login PATH without blocking the first window or file IPC.
+  // Terminal creation waits for it; file browsing does not need the shell.
+  shellEnvironment = (async () => {
+    try {
+      const { stdout } = await promisify(execFile)(
+        process.env.SHELL || "/bin/zsh",
+        ["-ilc", 'printf "\\n__GROVE_PATH__%s" "$PATH"'],
+        { encoding: "utf8", timeout: 5000 },
+      );
+      const marker = stdout.lastIndexOf("__GROVE_PATH__");
+      if (marker >= 0) process.env.PATH = stdout.slice(marker + 14).trim();
+    } catch {
+      process.env.PATH = `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
+    }
+  })();
   try {
     settings = {
       ...service.defaults(),

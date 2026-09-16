@@ -429,6 +429,7 @@ test("bottom terminal resizes, zooms, maximizes and restores without restarting 
     .getByRole("button", { name: "新建终端", exact: true })
     .first()
     .click();
+  await expect(page.locator(".xterm-helper-textarea")).toBeVisible();
   const sessions = await page.evaluate(() => window.grove.terminalList());
   const id = sessions[0].id;
   const separator = page.getByRole("separator", { name: "调整终端高度" });

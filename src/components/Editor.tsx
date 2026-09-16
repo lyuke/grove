@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import MonacoEditor, { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
@@ -97,6 +97,23 @@ export interface OpenDocument {
   missing?: boolean;
   position?: { lineNumber: number; column: number };
 }
+const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
+  fontFamily: '"SF Mono", Menlo, monospace',
+  fontSize: 13,
+  lineHeight: 22,
+  minimap: { enabled: false },
+  padding: { top: 16 },
+  scrollBeyondLastLine: false,
+  automaticLayout: true,
+  tabSize: 2,
+  renderLineHighlight: "all",
+  smoothScrolling: true,
+  wordWrap: "off",
+  bracketPairColorization: { enabled: true },
+  // Monaco 0.52's occurrence scheduler rejects on rapid model disposal.
+  // Syntax highlighting remains enabled; opt out of symbol occurrences.
+  occurrencesHighlight: "off",
+};
 export default function Editor({
   doc,
   theme,
@@ -111,15 +128,14 @@ export default function Editor({
   onSave(): void;
 }) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const callbacks = useRef({ onSave, onPosition });
-  callbacks.current = { onSave, onPosition };
+  const callbacks = useRef({ onSave, onPosition, onChange });
+  callbacks.current = { onSave, onPosition, onChange };
+  const handleChange = useCallback(
+    (value: string | undefined) => callbacks.current.onChange(value || ""),
+    [],
+  );
   const listener = useRef<monaco.IDisposable | null>(null);
   useEffect(() => () => listener.current?.dispose(), []);
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (editor && editor.getValue() !== doc.content)
-      editor.setValue(doc.content);
-  }, [doc.key, doc.content]);
   useEffect(() => {
     const editor = editorRef.current;
     // Cursor events are persisted by the parent. Do not echo the same
@@ -135,25 +151,9 @@ export default function Editor({
       language={language(doc.path)}
       value={doc.content}
       theme={`grove-${theme}`}
-      onChange={(value) => onChange(value || "")}
+      onChange={handleChange}
       loading={<div className="muted center">正在打开编辑器…</div>}
-      options={{
-        fontFamily: '"SF Mono", Menlo, monospace',
-        fontSize: 13,
-        lineHeight: 22,
-        minimap: { enabled: false },
-        padding: { top: 16 },
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        tabSize: 2,
-        renderLineHighlight: "all",
-        smoothScrolling: true,
-        wordWrap: "off",
-        bracketPairColorization: { enabled: true },
-        // Monaco 0.52's occurrence scheduler rejects on rapid model disposal.
-        // Syntax highlighting remains enabled; opt out of symbol occurrences.
-        occurrencesHighlight: "off",
-      }}
+      options={editorOptions}
       onMount={(editor) => {
         editorRef.current = editor;
         if (editor.getValue() !== doc.content) editor.setValue(doc.content);
