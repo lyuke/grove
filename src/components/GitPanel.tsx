@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, lazy, Suspense } from "react";
 import { useState } from "react";
 import {
   GitBranch,
@@ -9,7 +9,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { Change, GitStatus } from "../../shared/types";
+const GitHistory = lazy(() => import("./GitHistory"));
 function GitPanel({
+  projectId,
+  revision,
   status,
   message,
   setMessage,
@@ -19,6 +22,8 @@ function GitPanel({
   refresh,
   busy,
 }: {
+  projectId: string;
+  revision: number;
   status: GitStatus | null;
   message: string;
   setMessage(v: string): void;
@@ -28,6 +33,7 @@ function GitPanel({
   refresh(): void;
   busy: boolean;
 }) {
+  const [history, setHistory] = useState(false);
   const [stagedOpen, setStagedOpen] = useState(true);
   if (!status) return <p className="panel-copy">正在读取 Git 状态…</p>;
   if (!status.repository)
@@ -101,50 +107,66 @@ function GitPanel({
           <RefreshCw size={13} />
         </button>
       </div>
-      <div className="commit-form">
-        <textarea
-          aria-label="提交信息"
-          placeholder="这次改变了什么？"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          rows={3}
-        />
-        <button
-          className="primary-button full"
-          disabled={
-            busy ||
-            !message.trim() ||
-            !staged.length ||
-            status.changes.some((c) => c.conflict)
-          }
-          onClick={onCommit}
-        >
-          <Check size={14} />
-          {busy
-            ? "处理中…"
-            : `提交暂存内容${staged.length ? ` · ${staged.length}` : ""}`}
+      <div className="history-tabs">
+        <button aria-pressed={!history} onClick={() => setHistory(false)}>
+          更改
+        </button>
+        <button aria-pressed={history} onClick={() => setHistory(true)}>
+          历史提交
         </button>
       </div>
-      <div className="git-scroll">
-        <button
-          className="section-label full"
-          onClick={() => setStagedOpen((v) => !v)}
-        >
-          暂存的更改 <span>{staged.length}</span>
-        </button>
-        {stagedOpen && rows(staged, true)}
-        <div className="section-label">
-          工作区更改 <span>{unstaged.length}</span>
-        </div>
-        {rows(unstaged, false)}
-        {!status.changes.length && (
-          <div className="git-clean">
-            <Check size={24} />
-            <p>工作区干净</p>
-            <small>每一次改变，都从这里开始。</small>
+      {history ? (
+        <Suspense fallback={<p>正在加载…</p>}>
+          <GitHistory projectId={projectId} revision={revision} />
+        </Suspense>
+      ) : (
+        <>
+          <div className="commit-form">
+            <textarea
+              aria-label="提交信息"
+              placeholder="这次改变了什么？"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={3}
+            />
+            <button
+              className="primary-button full"
+              disabled={
+                busy ||
+                !message.trim() ||
+                !staged.length ||
+                status.changes.some((c) => c.conflict)
+              }
+              onClick={onCommit}
+            >
+              <Check size={14} />
+              {busy
+                ? "处理中…"
+                : `提交暂存内容${staged.length ? ` · ${staged.length}` : ""}`}
+            </button>
           </div>
-        )}
-      </div>
+          <div className="git-scroll">
+            <button
+              className="section-label full"
+              onClick={() => setStagedOpen((v) => !v)}
+            >
+              暂存的更改 <span>{staged.length}</span>
+            </button>
+            {stagedOpen && rows(staged, true)}
+            <div className="section-label">
+              工作区更改 <span>{unstaged.length}</span>
+            </div>
+            {rows(unstaged, false)}
+            {!status.changes.length && (
+              <div className="git-clean">
+                <Check size={24} />
+                <p>工作区干净</p>
+                <small>每一次改变，都从这里开始。</small>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }

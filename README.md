@@ -6,10 +6,10 @@
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.4) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。本地构建的安装包位于 `release/0.1.4/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.5) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。本地构建的安装包位于 `release/0.1.5/`。
 
-- Apple Silicon：`Grove-0.1.4-arm64.dmg`
-- Intel：`Grove-0.1.4-x64.dmg`
+- Apple Silicon：`Grove-0.1.5-arm64.dmg`
+- Intel：`Grove-0.1.5-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -81,8 +81,8 @@ npm run package        # 生成 arm64 和 x64 DMG
 验证打包后的应用：
 
 ```sh
-GROVE_EXECUTABLE="$PWD/release/0.1.4/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
-GROVE_EXECUTABLE="$PWD/release/0.1.4/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.5/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.5/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
 ```
 
 在 Apple Silicon 上运行 x64 版本需要 Rosetta；转译测试不能代替 Intel 实机测试。
@@ -124,3 +124,17 @@ PLAN.md                 产品范围与阶段验收要求
 - [Monaco Editor](https://github.com/microsoft/monaco-editor)
 - [node-pty](https://github.com/microsoft/node-pty)
 - [ripgrep 15.2.0](https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0)：资源脚本使用固定版本及官方 SHA-256 校验和，安装包附带其许可文件。
+
+## 设置与历史提交
+
+点击项目栏底部「设置」，或使用 `⌘ ,` / Grove 菜单「设置…」，打开独立设置面板。
+外观提供 Grove 深浅色、[Nord](https://www.nordtheme.com/docs/colors-and-palettes/) 和
+[Catppuccin Mocha](https://github.com/catppuccin/catppuccin)，同时适配编辑器和终端。
+布局可设置侧栏显示、终端位置、字号和恢复默认布局；快捷键页可修改终端快捷键。
+配置自动保存到本机，已有配置兼容保留。开源配色许可位于 `resources/licenses/`，随安装包提供。
+
+Git 面板「历史提交」按每页 50 条读取当前分支、当前项目目录的提交，显示作者、日期、提交编号和信息；点击记录可查看完整信息及文件变更统计。
+设置页和历史组件按需加载；编辑器只注册当前支持的语言，空项目工作区不预加载编辑器。
+打包时前端依赖由 Vite 产物提供，主进程依赖由 esbuild 打包，仅额外携带 PTY 运行时及原生组件。
+
+0.1.5 发布说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。构建后可运行 `node scripts/verify-package.mjs` 检查双架构组件、语言资源和开发文件裁剪结果。

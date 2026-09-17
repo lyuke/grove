@@ -1,6 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MonacoEditor, { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import "monaco-editor/esm/vs/editor/editor.all";
+import "monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoLineQuickAccess";
+import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution";
+import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution";
+import "monaco-editor/esm/vs/basic-languages/css/css.contribution";
+import "monaco-editor/esm/vs/basic-languages/html/html.contribution";
+import "monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution";
+import "monaco-editor/esm/vs/basic-languages/python/python.contribution";
+import "monaco-editor/esm/vs/basic-languages/rust/rust.contribution";
+import "monaco-editor/esm/vs/basic-languages/go/go.contribution";
+import "monaco-editor/esm/vs/basic-languages/shell/shell.contribution";
+import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution";
+import "monaco-editor/esm/vs/basic-languages/ini/ini.contribution";
+import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution";
+import "monaco-editor/esm/vs/basic-languages/lua/lua.contribution";
+import "monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution";
+import "monaco-editor/esm/vs/basic-languages/swift/swift.contribution";
+import "monaco-editor/esm/vs/language/typescript/monaco.contribution";
+import "monaco-editor/esm/vs/language/css/monaco.contribution";
+import "monaco-editor/esm/vs/language/html/monaco.contribution";
+import "monaco-editor/esm/vs/language/json/monaco.contribution";
+
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
@@ -50,6 +72,42 @@ monaco.editor.defineTheme("grove-light", {
     "editorLineNumber.foreground": "#9AA69B",
     "editor.lineHighlightBackground": "#EFF3EA",
     "editor.selectionBackground": "#D7E8CA",
+  },
+});
+monaco.editor.defineTheme("grove-nord", {
+  base: "vs-dark",
+  inherit: true,
+  rules: [
+    { token: "comment", foreground: "e5e9f0", fontStyle: "italic" },
+    { token: "string", foreground: "a3be8c" },
+    { token: "keyword", foreground: "b48ead" },
+  ],
+  colors: {
+    "editor.background": "#2e3440",
+    "editor.foreground": "#d8dee9",
+    "editor.selectionBackground": "#434c5e",
+    "editor.lineHighlightBackground": "#3b4252",
+    "editorCursor.foreground": "#88c0d0",
+    "editorLineNumber.foreground": "#e5e9f0",
+    "editorWidget.background": "#3b4252",
+  },
+});
+monaco.editor.defineTheme("grove-catppuccin", {
+  base: "vs-dark",
+  inherit: true,
+  rules: [
+    { token: "comment", foreground: "bac2de", fontStyle: "italic" },
+    { token: "string", foreground: "a6e3a1" },
+    { token: "keyword", foreground: "f5c2e7" },
+  ],
+  colors: {
+    "editor.background": "#1e1e2e",
+    "editor.foreground": "#cdd6f4",
+    "editor.selectionBackground": "#45475a",
+    "editor.lineHighlightBackground": "#181825",
+    "editorCursor.foreground": "#cba6f7",
+    "editorLineNumber.foreground": "#bac2de",
+    "editorWidget.background": "#181825",
   },
 });
 export function language(file: string) {

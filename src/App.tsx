@@ -50,6 +50,7 @@ import SearchPanel from "./components/SearchPanel";
 import TerminalPane from "./components/TerminalPane";
 
 const loadEditor = () => import("./components/Editor");
+const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const Editor = lazy(loadEditor);
 const DiffView = lazy(() =>
   loadEditor().then((m) => ({ default: m.DiffView })),
@@ -197,6 +198,17 @@ function Dialog({
 }
 
 export default function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => {
+    const open = (event: KeyboardEvent) => {
+      if (event.metaKey && event.code === "Comma") {
+        event.preventDefault();
+        setSettingsOpen(true);
+      }
+    };
+    window.addEventListener("keydown", open);
+    return () => window.removeEventListener("keydown", open);
+  }, []);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [docs, setDocs] = useState<OpenDocument[]>([]);
   const [activeKeys, setActiveKeys] = useState<Record<string, string>>({});
@@ -305,7 +317,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !settings?.projects.length) return;
     const idle = requestIdleCallback(
       () => {
         void loadEditor().catch(onError);
@@ -313,7 +325,7 @@ export default function App() {
       { timeout: 1000 },
     );
     return () => cancelIdleCallback(idle);
-  }, [ready, onError]);
+  }, [ready, Boolean(settings?.projects.length), onError]);
 
   async function persistWorkspace() {
     if (!latest.current.settings || !ready)
@@ -954,7 +966,15 @@ export default function App() {
     terminal: () => run(openTerminalShortcut),
     "new-terminal": () => run(newTerminal),
   };
-  useEffect(() => api?.onMenu((action) => actions.current[action]?.()), []);
+  useEffect(
+    () =>
+      api?.onMenu((action) =>
+        action === "settings"
+          ? setSettingsOpen(true)
+          : actions.current[action]?.(),
+      ),
+    [],
+  );
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (!event.repeat && !event.isComposing) {
@@ -1083,6 +1103,15 @@ export default function App() {
   );
   return (
     <div className={`app theme-${settings.theme}`}>
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsPanel
+            settings={settings}
+            onClose={() => setSettingsOpen(false)}
+            onChange={(patch) => setSettings((s) => s && { ...s, ...patch })}
+          />
+        </Suspense>
+      )}
       <header className="titlebar">
         <div className="traffic-space" />
         <div className="brand">
@@ -1232,6 +1261,13 @@ export default function App() {
                 </button>
               </div>
               <div className="project-bottom">
+                <button
+                  className="theme-switch"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <Settings2 size={15} />
+                  <span>设置</span>
+                </button>
                 <div className="local-label">
                   <span className="status-dot" /> 本地工作区
                 </div>
@@ -1322,6 +1358,9 @@ export default function App() {
                   />
                 ) : (
                   <GitPanel
+                    key={projectId}
+                    projectId={projectId!}
+                    revision={gitRefresh}
                     status={gitStatus}
                     message={messages[project.id] || ""}
                     setMessage={gitSetMessage}

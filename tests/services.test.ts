@@ -162,3 +162,32 @@ describe("real Git repository", () => {
     }
   });
 });
+
+describe("commit history", () => {
+  it("handles empty repositories, multiline messages and paginates without duplicates", async () => {
+    await service.git(root, ["init"]);
+    expect(await service.gitHistory(root, 0)).toEqual([]);
+    await service.git(root, ["config", "commit.gpgsign", "false"]);
+    await service.git(root, ["config", "user.name", "History Tester"]);
+    await service.git(root, ["config", "user.email", "history@example.com"]);
+    await fs.writeFile(path.join(root, "history.txt"), "first");
+    await service.git(root, ["add", "."]);
+    await service.git(root, [
+      "commit",
+      "-m",
+      "First commit\n\nA multiline body 中文",
+    ]);
+    const first = await service.gitHistory(root, 0);
+    expect(first).toHaveLength(1);
+    expect(first[0].message).toContain("A multiline body 中文");
+    expect(first[0].author).toBe("History Tester");
+    expect(await service.gitHistory(root, 1)).toEqual([]);
+    expect(await service.gitCommitDetail(root, first[0].hash)).toContain(
+      "history.txt",
+    );
+    await expect(service.gitHistory(root, -1)).rejects.toThrow("分页");
+    await expect(service.gitCommitDetail(root, "--all")).rejects.toThrow(
+      "提交编号",
+    );
+  });
+});

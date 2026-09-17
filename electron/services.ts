@@ -389,3 +389,44 @@ export async function search(
     })
     .slice(0, 200);
 }
+
+// NUL fields preserve multiline messages and unusual author names.
+export async function gitHistory(root: string, skip: number) {
+  if (!Number.isSafeInteger(skip) || skip < 0) throw new Error("分页参数无效");
+  await git(root, ["rev-parse", "--git-dir"]);
+  const head = await git(root, ["rev-parse", "--verify", "HEAD"]).catch(
+    () => "",
+  );
+  if (!head) return [];
+  const output = await git(root, [
+    "log",
+    "--max-count=50",
+    `--skip=${skip}`,
+    "--format=%H%x00%an%x00%aI%x00%B%x00",
+    "HEAD",
+    "--",
+    ".",
+  ]);
+  const fields = output.split("\0");
+  const commits = [];
+  for (let i = 0; i + 3 < fields.length; i += 4)
+    commits.push({
+      hash: fields[i].trim(),
+      author: fields[i + 1],
+      date: fields[i + 2],
+      message: fields[i + 3].trimEnd(),
+    });
+  return commits;
+}
+export async function gitCommitDetail(root: string, hash: string) {
+  if (!/^[a-f0-9]{40,64}$/.test(hash)) throw new Error("提交编号无效");
+  return git(root, [
+    "show",
+    "--format=fuller",
+    "--stat",
+    "--no-renames",
+    hash,
+    "--",
+    ".",
+  ]);
+}

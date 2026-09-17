@@ -1,3 +1,33 @@
+# Grove 0.1.5 验证记录
+
+验证日期：2026-09-17，Apple Silicon / macOS Darwin 25.6.0。
+
+- TypeScript / Vite / Electron 构建通过，15 项系统测试通过，格式检查通过。
+- 双架构包中仅有对应架构 PTY 原生组件；仅保留英文、简体中文、繁体中文 Electron 语言资源。
+- 打包产物中没有 source map 或测试脚本，Nord / Catppuccin 许可均保留。
+- 双架构 DMG 的 `hdiutil verify` 完整性检查通过；应用版本为 0.1.5，最低系统版本为 macOS 12。
+- Apple Silicon 最终安装包完整回归 12 项通过。
+- Intel 最终安装包（Rosetta）11 项通过，1 项仅适用于原生架构的启动时序测试跳过。
+- 两个 DMG 均只读挂载，内部 app.asar 与通过测试的构建 SHA-256 一致。
+
+| 安装包 | 0.1.4 MiB | 上一轮预览 MiB | 0.1.5 MiB |
+| ------ | --------: | -------------: | --------: |
+| arm64  |    132.84 |         100.47 |     90.98 |
+| x64    |    138.53 |         105.27 |     95.34 |
+
+体积采用实际文件字节数 / 1,048,576 计算。当前格式为 UDBZ（bzip2），比试验的 LZFSE 镜像更小。保留 Electron 内核、GPU / 软件渲染组件及 ICU 数据，不裁剪编辑器、PTY 或搜索能力。
+
+运行 `node scripts/verify-package.mjs` 复现安装包内容检查。端到端测试使用临时项目和隔离配置目录，不修改日常工作区。Intel 包通过 Rosetta 验证，不代替 Intel 实机测试。未签名或公证。
+
+## 0.1.5 校验和
+
+```text
+206f84491c2eb41bf91ba0fff9e7afdb7441a0527a45ba53a723b2dfe74bea25  Grove-0.1.5-arm64.dmg
+912b43332c3f0d228a404b7a0e5f371775c032faf57168591b2542837bdf484d  Grove-0.1.5-x64.dmg
+```
+
+## 历史验证记录：0.1.4
+
 # Grove 0.1.4 验证记录
 
 验证日期：2026-09-17。测试主机：Apple Silicon，macOS / Darwin 25.6.0。

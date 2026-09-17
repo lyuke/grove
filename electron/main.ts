@@ -142,7 +142,10 @@ function setupIPC() {
           240,
           Math.min(1600, value.terminalWidth),
         );
-      if (value.theme === "dark" || value.theme === "light")
+      if (
+        value.theme &&
+        ["dark", "light", "nord", "catppuccin"].includes(value.theme)
+      )
         settings.theme = value.theme;
       if (
         "activeProject" in value &&
@@ -290,6 +293,9 @@ function setupIPC() {
           ? path.join(process.resourcesPath, "bin", "rg")
           : path.join(__dirname, `../resources/${process.arch}/rg`),
       ),
+    gitHistory: (id, skip) => service.gitHistory(project(id).path, skip),
+    gitCommitDetail: (id, hash) =>
+      service.gitCommitDetail(project(id).path, hash),
     gitStatus: (id) => readGitStatus(id, true),
     gitDiff: async (id, relative, staged) => {
       const change = (await readGitStatus(id)).changes.find(
@@ -535,6 +541,11 @@ function configureMenu() {
         label: "Grove",
         submenu: [
           { role: "about" },
+          {
+            label: "设置…",
+            accelerator: "CmdOrCtrl+,",
+            click: action("settings"),
+          },
           { type: "separator" },
           { role: "hide" },
           { role: "hideOthers" },

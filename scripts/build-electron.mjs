@@ -1,4 +1,7 @@
 import { build } from "esbuild";
+import { rm } from "node:fs/promises";
+// Drop stale maps and chunks from previous builds before packaging.
+await rm("dist-electron", { recursive: true, force: true });
 await build({
   entryPoints: { main: "electron/main.ts", preload: "electron/preload.ts" },
   bundle: true,
@@ -7,5 +10,6 @@ await build({
   outdir: "dist-electron",
   outExtension: { ".js": ".cjs" },
   external: ["electron", "node-pty"],
-  sourcemap: true,
+  minify: true,
+  sourcemap: false,
 });

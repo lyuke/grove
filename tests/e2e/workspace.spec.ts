@@ -68,7 +68,46 @@ test.afterAll(async () => {
     });
 });
 
+test("settings and history work and persist", async () => {
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "Nord", exact: true }).click();
+  await expect(page.locator(".app")).toHaveClass(/theme-nord/);
+  await page.getByRole("button", { name: "布局", exact: true }).click();
+  await page.getByLabel("终端位置").selectOption("right");
+  await page.getByRole("button", { name: "快捷键", exact: true }).click();
+  await page.getByLabel("终端快捷键", { exact: true }).fill("Command+J");
+  await page.getByRole("button", { name: "应用快捷键" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.grove.settings()))
+    .toMatchObject({
+      theme: "nord",
+      terminalDock: "right",
+      terminalShortcut: "Command+J",
+    });
+  await page.getByRole("button", { name: "关闭设置" }).click();
+  await page.reload();
+  await expect(page.locator(".theme-nord")).toBeVisible();
+  await page.getByRole("button", { name: "Git 变更", exact: true }).click();
+  await page.getByRole("button", { name: "历史提交", exact: true }).click();
+  await page.locator(".history-commit").filter({ hasText: "initial" }).click();
+  await expect(page.locator(".commit-detail")).toContainText("hello.txt");
+  await page.screenshot({ path: "artifacts/history-nord.png" });
+  await page.getByRole("button", { name: "更改", exact: true }).click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Catppuccin Mocha", exact: true })
+    .click();
+  await page.screenshot({ path: "artifacts/settings-catppuccin.png" });
+  await page.getByRole("button", { name: "Grove 深色", exact: true }).click();
+  await page.getByRole("button", { name: "布局", exact: true }).click();
+  await page.getByRole("button", { name: "恢复默认布局" }).click();
+  await page.getByRole("button", { name: "快捷键", exact: true }).click();
+  await page.getByRole("button", { name: "恢复默认快捷键" }).click();
+  await page.getByRole("button", { name: "关闭设置" }).click();
+});
+
 test("edit, save, external conflict, search, Git commit and interactive PTY", async () => {
+  await page.getByRole("button", { name: "文件", exact: true }).click();
   await fs.mkdir("artifacts", { recursive: true });
   await page.screenshot({ path: "artifacts/welcome-dark.png" });
   await page.getByRole("button", { name: "hello.txt", exact: true }).click();

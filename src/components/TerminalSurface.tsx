@@ -184,7 +184,7 @@ export default function TerminalSurface({
   useEffect(() => {
     if (terminal.current)
       terminal.current.options.theme =
-        theme === "dark"
+        theme !== "light"
           ? {
               background: "#131D18",
               foreground: "#CAD8CF",
@@ -205,6 +205,23 @@ export default function TerminalSurface({
               cursor: "#4F713A",
               selectionBackground: "#C8DABC",
             };
+    if (terminal.current && (theme === "nord" || theme === "catppuccin")) {
+      const nord = theme === "nord";
+      terminal.current.options.theme = {
+        background: nord ? "#2e3440" : "#1e1e2e",
+        foreground: nord ? "#d8dee9" : "#cdd6f4",
+        cursor: nord ? "#88c0d0" : "#cba6f7",
+        selectionBackground: nord ? "#434c5e" : "#45475a",
+        black: "#45475a",
+        red: nord ? "#bf616a" : "#f38ba8",
+        green: nord ? "#a3be8c" : "#a6e3a1",
+        yellow: nord ? "#ebcb8b" : "#f9e2af",
+        blue: nord ? "#81a1c1" : "#89b4fa",
+        magenta: nord ? "#b48ead" : "#f5c2e7",
+        cyan: nord ? "#8fbcbb" : "#94e2d5",
+        white: nord ? "#eceff4" : "#cdd6f4",
+      };
+    }
   }, [theme]);
   useEffect(() => {
     const term = terminal.current;

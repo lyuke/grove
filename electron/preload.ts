@@ -24,6 +24,8 @@ const api: GroveAPI = {
   moveFile: invoke("moveFile"),
   trashFile: invoke("trashFile"),
   search: invoke("search"),
+  gitHistory: invoke("gitHistory"),
+  gitCommitDetail: invoke("gitCommitDetail"),
   gitStatus: invoke("gitStatus"),
   gitDiff: invoke("gitDiff"),
   gitStage: invoke("gitStage"),

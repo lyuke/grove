@@ -1416,3 +1416,174 @@ code {
   flex: 1;
   min-height: 0;
 }
+.settings-dialog {
+  color: var(--text);
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0;
+  width: min(760px, 90vw);
+  box-shadow: 0 24px 90px #0008;
+}
+.settings-dialog::backdrop {
+  background: #0007;
+  backdrop-filter: blur(5px);
+}
+.settings-dialog header {
+  display: flex;
+  justify-content: space-between;
+  padding: 26px 30px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-dialog h2 {
+  margin: 8px 0 0;
+  font-size: 23px;
+  font-weight: 500;
+}
+.settings-dialog small {
+  color: var(--muted);
+  letter-spacing: 2px;
+  font-size: 10px;
+}
+.settings-body {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  min-height: 350px;
+}
+.settings-body nav {
+  padding: 20px 12px;
+  background: var(--projects);
+}
+.settings-body nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 6px;
+}
+.settings-body button[aria-pressed="true"] {
+  background: var(--selected);
+  outline: 1px solid var(--accent);
+}
+.settings-body section {
+  padding: 24px 30px;
+}
+.settings-body h3 {
+  margin: 0 0 10px;
+  font-weight: 500;
+}
+.settings-body p {
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.settings-dialog footer {
+  padding: 14px 30px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+.theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 22px 0;
+}
+.theme-grid button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+.theme-preview {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 20px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+.theme-preview i {
+  width: 30px;
+  height: 7px;
+  border-radius: 2px;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-body select,
+.settings-body input:not([type="checkbox"]) {
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--border);
+  padding: 8px;
+  border-radius: 5px;
+}
+.settings-body input[type="number"] {
+  width: 70px;
+}
+.settings-body form {
+  display: flex;
+  gap: 8px;
+  margin: 22px 0;
+}
+.settings-body .secondary-button {
+  margin-top: 14px;
+}
+.history-tabs {
+  display: flex;
+  padding: 8px 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.history-tabs button {
+  flex: 1;
+  padding: 7px;
+  border-radius: 5px;
+  color: var(--secondary);
+}
+.history-tabs button[aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--accent);
+}
+.history-list {
+  padding: 8px 12px;
+}
+.history-commit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.history-commit:hover {
+  background: var(--hover);
+}
+.history-commit strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+.history-commit span {
+  display: block;
+  font-size: 11px;
+  color: var(--secondary);
+}
+.history-commit code {
+  font-size: 10px;
+  color: var(--accent);
+}
+.commit-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.7;
+}

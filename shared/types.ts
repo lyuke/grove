@@ -11,7 +11,7 @@ export interface Workspace {
 export interface Settings {
   projects: Project[];
   activeProject?: string;
-  theme: "dark" | "light";
+  theme: "dark" | "light" | "nord" | "catppuccin";
   widths: number[];
   collapsed: boolean[];
   terminalDock: "bottom" | "right";
@@ -43,6 +43,12 @@ export interface GitStatus {
   repository: boolean;
   branch: string;
   changes: Change[];
+}
+export interface GitCommitInfo {
+  hash: string;
+  author: string;
+  date: string;
+  message: string;
 }
 export interface GitDiff {
   original: string;
@@ -80,6 +86,8 @@ export interface GroveAPI {
   moveFile(id: string, from: string, to: string): Promise<void>;
   trashFile(id: string, path: string): Promise<boolean>;
   search(id: string, query: string, filenames: boolean): Promise<SearchHit[]>;
+  gitHistory(id: string, skip: number): Promise<GitCommitInfo[]>;
+  gitCommitDetail(id: string, hash: string): Promise<string>;
   gitStatus(id: string): Promise<GitStatus>;
   gitDiff(id: string, path: string, staged: boolean): Promise<GitDiff>;
   gitStage(id: string, path: string, stage: boolean): Promise<void>;
