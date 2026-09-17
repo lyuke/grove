@@ -1,6 +1,6 @@
 {
   "name": "grove",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A quiet workspace for your code, projects and agents",
   "private": true,
   "main": "dist-electron/main.cjs",
@@ -25,6 +25,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "0.11.0",
     "@xterm/xterm": "^5.5.0",
     "chokidar": "^4.0.3",
     "lucide-react": "^0.468.0",
@@ -51,7 +52,7 @@
     "appId": "app.grove.editor",
     "productName": "Grove",
     "directories": {
-      "output": "release/0.1.3"
+      "output": "release/0.1.4"
     },
     "files": [
       "dist/**/*",

@@ -6,10 +6,10 @@
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.3) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。本地构建的安装包位于 `release/0.1.3/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.4) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。本地构建的安装包位于 `release/0.1.4/`。
 
-- Apple Silicon：`Grove-0.1.3-arm64.dmg`
-- Intel：`Grove-0.1.3-x64.dmg`
+- Apple Silicon：`Grove-0.1.4-arm64.dmg`
+- Intel：`Grove-0.1.4-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -24,14 +24,16 @@ Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你�
 ## 第一版能力
 
 - 项目添加、查找、排序、修改显示名称、重新定位和移除。
-- 可折叠、调整宽度的项目栏和文件侧栏；底部终端支持拖动上边缘调整高度、最大化及还原。
+- 可折叠、调整宽度的项目栏和文件侧栏；终端支持下方/右侧停靠、拖动边缘调整大小、最大化及还原。
 - 按需展开文件树，创建文件/目录、重命名、移动和移到废纸篓。
 - Monaco 多标签编辑、语法高亮、文件内查找替换、保存和行列位置恢复。
 - 文件名快速打开、项目全文搜索。
 - 磁盘变化监听；未保存内容与外部修改冲突时，比较并明确选择版本。
 - 项目独立的多个 PTY 终端；切换项目不中断任务。
-- 终端工具栏支持字体缩小/放大（9–24 px），点击字号重置为 12 px；终端高度、最大化状态与字号自动保存。
-- Git 分支、工作区和暂存区列表、并排/行内 Diff、暂存、取消暂存、提交。
+- 终端工具栏支持字体缩小/放大（9–24 px），点击字号重置为 12 px；停靠位置、宽高、最大化状态与字号自动保存。
+- 终端标题可拖到编辑区右侧或下方；工具栏也可切换停靠位置，任务持续运行。
+- 终端支持自定义快捷键、滚动到底部按钮，以及 ⌘ 点击 HTTP/HTTPS 链接在默认浏览器打开。
+- Git 分支、工作区和暂存区列表、并排/行内 Diff、暂存、取消暂存、提交。Diff 复用编辑器并折叠未修改区域，大文件使用纯文本模式。
 - 深浅主题、macOS 菜单与快捷键。
 
 移除项目只移除列表记录。删除文件会先确认，再移入 macOS 废纸篓。关闭含未保存内容的标签、关闭终端和退出应用均有对应提示。退出时可选择保存所有文件或明确放弃修改；保存失败会保持应用打开。退出前会写入最新工作区布局。
@@ -50,6 +52,8 @@ Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你�
 | `⌘ B`    | 切换文件侧栏                         |
 | `⌃ \``   | 切换终端面板                         |
 | `⌃ ⇧ \`` | 新建终端                             |
+
+终端默认快捷键为 Control + 反引号。没有运行中的终端时会创建终端；在编辑器中按下会显示并聚焦终端，在终端中再次按下会收起。点击终端工具栏的快捷键设置按钮或底部快捷键文字，可输入 `Command+J`、`Control+Alt+T` 等组合；设置立即生效并自动保存。
 
 ## 本地开发
 
@@ -77,8 +81,8 @@ npm run package        # 生成 arm64 和 x64 DMG
 验证打包后的应用：
 
 ```sh
-GROVE_EXECUTABLE="$PWD/release/0.1.3/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
-GROVE_EXECUTABLE="$PWD/release/0.1.3/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.4/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.4/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
 ```
 
 在 Apple Silicon 上运行 x64 版本需要 Rosetta；转译测试不能代替 Intel 实机测试。

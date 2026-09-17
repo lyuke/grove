@@ -133,9 +133,19 @@ test("edit, save, external conflict, search, Git commit and interactive PTY", as
   await page
     .getByRole("button", { name: "暂存 hello.txt", exact: true })
     .click();
+  // Staging closes the diff and remounts the editor. Wait for that transition
+  // before entering the message, especially under Rosetta.
+  await expect(
+    page.getByRole("button", { name: "取消暂存 hello.txt", exact: true }),
+  ).toBeEnabled();
+  await expect(page.locator(".monaco-diff-editor")).toHaveCount(0);
+  await expect(input).toBeVisible();
   await page
     .getByRole("textbox", { name: "提交信息" })
     .fill("Edit greeting from Grove");
+  await expect(page.getByRole("textbox", { name: "提交信息" })).toHaveValue(
+    "Edit greeting from Grove",
+  );
   await page
     .getByRole("button", { name: "提交暂存内容 · 1", exact: true })
     .click();

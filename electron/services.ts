@@ -19,6 +19,9 @@ export const defaults = (): Settings => ({
   theme: "dark",
   widths: [180, 245, 390],
   collapsed: [false, false, false],
+  terminalDock: "bottom",
+  terminalWidth: 440,
+  terminalShortcut: "Control+`",
   terminalHeight: 280,
   terminalMaximized: false,
   terminalFontSize: 12,
@@ -167,7 +170,11 @@ export async function git(root: string, args: string[]) {
       await exec("git", ["--literal-pathspecs", "-C", root, ...args], {
         maxBuffer: 12 * 1024 * 1024,
         timeout: 120000,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_OPTIONAL_LOCKS: "0",
+        },
       })
     ).stdout;
   } catch (error: any) {
@@ -205,7 +212,7 @@ export async function gitStatus(root: string): Promise<GitStatus> {
     return { repository: false, branch: "", changes: [] };
   }
   // --relative paths are scoped to this project, including projects opened below the repo root.
-  const [branch, output] = await Promise.all([
+  const [branch, output, rawPrefix] = await Promise.all([
     git(root, ["symbolic-ref", "--short", "HEAD"]).catch(() =>
       git(root, ["rev-parse", "--short", "HEAD"]),
     ),
@@ -217,8 +224,9 @@ export async function gitStatus(root: string): Promise<GitStatus> {
       "--",
       ".",
     ]),
+    git(root, ["rev-parse", "--show-prefix"]),
   ]);
-  const prefix = (await git(root, ["rev-parse", "--show-prefix"])).trim();
+  const prefix = rawPrefix.trim();
   const changes = parseStatus(output).map((c) => ({
     ...c,
     path:
@@ -237,34 +245,42 @@ export async function gitDiff(
   root: string,
   relative: string,
   staged: boolean,
+  knownChange?: Change,
 ): Promise<GitDiff> {
   await safePath(root, relative);
-  const status = await gitStatus(root);
-  const change = status.changes.find((c) => c.path === relative);
+  const change =
+    knownChange ||
+    (await gitStatus(root)).changes.find((c) => c.path === relative);
   if (!change) throw new Error("此文件没有 Git 变更，请刷新");
   if (change.conflict)
     throw new Error("文件存在合并冲突，请在编辑器中解决冲突后暂存");
-  const prefix = (await git(root, ["rev-parse", "--show-prefix"])).trim();
-  const oldPath =
-    prefix + (staged ? change.originalPath || relative : relative);
-  let original = "",
-    modified = "";
-  if (staged) {
-    if (change.index !== "A")
-      original = await git(root, ["show", `HEAD:${oldPath}`]);
-    if (change.index !== "D")
-      modified = await git(root, ["show", `:${prefix + relative}`]);
-  } else {
-    if (change.index !== "?" && change.index !== "D")
-      original = await git(root, ["show", `:${prefix + relative}`]);
-    if (change.worktree !== "D") {
-      const target = await safePath(root, relative);
-      const stat = await fs.stat(target);
-      if (stat.size > 5 * 1024 * 1024)
-        throw new Error("文件超过 5 MB，暂不支持 Diff");
-      modified = (await fs.readFile(target)).toString("utf8");
-    }
-  }
+  // Git resolves :./ paths from -C, including projects below the repo root.
+  const oldPath = "./" + (staged ? change.originalPath || relative : relative);
+  const originalPromise = staged
+    ? change.index === "A"
+      ? Promise.resolve("")
+      : git(root, ["show", `HEAD:${oldPath}`])
+    : change.index === "?" || change.index === "D"
+      ? Promise.resolve("")
+      : git(root, ["show", `:./${relative}`]);
+  const modifiedPromise = staged
+    ? change.index === "D"
+      ? Promise.resolve("")
+      : git(root, ["show", `:./${relative}`])
+    : change.worktree === "D"
+      ? Promise.resolve("")
+      : (async () => {
+          const target = await safePath(root, relative);
+          if ((await fs.stat(target)).size > 5 * 1024 * 1024)
+            throw new Error("文件超过 5 MB，暂不支持 Diff");
+          return (await fs.readFile(target)).toString("utf8");
+        })();
+  const [original, modified] = await Promise.all([
+    originalPromise,
+    modifiedPromise,
+  ]);
+  if (original.length > 5 * 1024 * 1024 || modified.length > 5 * 1024 * 1024)
+    throw new Error("文件超过 5 MB，暂不支持 Diff");
   return {
     original,
     modified,

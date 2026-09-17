@@ -1,13 +1,49 @@
-# Grove 0.1.3 性能验证
+# Grove 性能验证
 
-## 改动
+## 0.1.4：Git Diff
+
+2026-09-17，Apple Silicon / macOS Darwin 25.6.0。同机比较 0.1.3 与 0.1.4 的 arm64 安装包，各启动 3 次。临时仓库包含 2,000 个未跟踪文件，以及 3 个有两处修改的文本文件，每个 18,001 行（约 0.8 MB）。每轮在 Git 面板依次打开 6 次 Diff。
+
+从点击文件开始，等待对应内容和差异标记出现，再等待下一帧；新版同时检查 Diff 计算完成事件。下表为三轮中位数，后续切换合并 15 个样本。
+
+| 指标                  |     0.1.3 |    0.1.4 |
+| --------------------- | --------: | -------: |
+| 首次打开 Diff         | 4480.6 ms | 647.6 ms |
+| 后续切换 Diff         | 4031.2 ms | 557.6 ms |
+| 全部 18 次打开/切换   | 4122.2 ms | 564.1 ms |
+| 每次操作启动 Git 进程 |   8–14 次 |     1 次 |
+
+该样例中全部操作耗时中位数降低约 86%。测试没有清空系统文件缓存，也不代表所有项目或 Intel 实机的延迟。
+
+### 改动与边界
+
+- Git 状态查询不再可选地写入索引，避免只读查询触发文件监听与重复刷新。
+- 合并在途状态查询，缓存期限从查询完成后计算，最长 30 秒。文件变化、暂存、提交会使缓存失效，手动刷新和窗口重新聚焦会重新查询。
+- 从当前 Git 索引/HEAD 读取文件时使用相对路径，省去额外的路径查询；切换 Diff 不再重新扫描整个仓库状态。
+- 复用 Diff 编辑器及模型，稳定 Git 列表回调，忽略已经过期的异步响应。
+- 未修改区域默认折叠；两侧文本合计超过 500,000 个字符时使用纯文本模式，保留完整文字及差异。单侧仍限制为 5 MB，复杂差异计算上限保持 5 秒。
+
+缓存失效或到期后需要重新读取仓库状态，不能保证每次操作都只有一个 Git 进程。本样例在本机 Electron 中启动单个 Git 进程约耗时 0.3 秒，减少进程次数是主要收益之一。该基准未覆盖大量冲突、二进制文件、网络磁盘或每行都变化的最坏情况。
+
+### 复现
+
+```sh
+GROVE_EXECUTABLE="$PWD/release/0.1.3/mac-arm64/Grove.app/Contents/MacOS/Grove" GROVE_BENCH_OUTPUT=artifacts/diff-performance-baseline.json node scripts/benchmark-diff.mjs
+GROVE_EXECUTABLE="$PWD/release/0.1.4/mac-arm64/Grove.app/Contents/MacOS/Grove" GROVE_BENCH_OUTPUT=artifacts/diff-performance-optimized.json node scripts/benchmark-diff.mjs
+```
+
+原始数据：[优化前](artifacts/diff-performance-baseline.json)、[优化后](artifacts/diff-performance-optimized.json)。功能回归还覆盖快速切换、外部修改刷新、并排/行内切换及编辑器实例复用。
+
+## 0.1.3：启动与文件浏览
+
+### 改动
 
 - 登录 Shell 环境改为异步加载，不再阻塞首个窗口和文件读取。终端及 Git 操作等待环境就绪，保留 Finder 启动时的命令路径。
 - 文件树与文件行分别缓存渲染结果，使用稳定回调。输入、光标移动不会重绘整个目录；切换文件只更新相关选中行。
 - 编辑器配置及内容监听回调保持稳定，去掉重复读取全文的同步逻辑。
 - 终端渲染模块仅在实际创建终端后加载；编辑器模块在工作区空闲时预加载，打开文件时与磁盘读取并行加载。
 
-## 同机安装包对比
+### 同机安装包对比
 
 2026-09-16，Apple Silicon / macOS Darwin 25.6.0。比较 0.1.2 与 0.1.3 的 arm64 安装包，均由 Playwright 启动，分别运行 3 次，使用独立临时项目和配置。
 
@@ -25,7 +61,7 @@
 
 测试未清空操作系统文件缓存，也未模拟全新系统、网络磁盘或所有实际项目。输入耗时包含自动化按键发送与渲染等待，并非单个按键的延迟。
 
-## 复现
+### 复现
 
 ```sh
 GROVE_EXECUTABLE="$PWD/release/0.1.2/mac-arm64/Grove.app/Contents/MacOS/Grove" GROVE_BENCH_OUTPUT=artifacts/performance-baseline.json npm run benchmark

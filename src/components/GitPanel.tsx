@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useState } from "react";
 import {
   GitBranch,
@@ -8,7 +9,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { Change, GitStatus } from "../../shared/types";
-export default function GitPanel({
+function GitPanel({
   status,
   message,
   setMessage,
@@ -147,3 +148,5 @@ export default function GitPanel({
     </>
   );
 }
+
+export default memo(GitPanel);

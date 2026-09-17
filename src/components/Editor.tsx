@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import MonacoEditor, { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
@@ -181,18 +181,23 @@ export function DiffView({
   path,
   theme,
   sideBySide,
+  loading = false,
 }: {
   diff: GitDiff;
   path: string;
   theme: string;
   sideBySide: boolean;
+  loading?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+  const [computing, setComputing] = useState(true);
+  const last = useRef({ original: "", modified: "", path: "" });
+  const large = diff.original.length + diff.modified.length > 500000;
   useEffect(() => {
     if (diff.binary || !host.current) return;
-    const original = monaco.editor.createModel(diff.original, language(path));
-    const modified = monaco.editor.createModel(diff.modified, language(path));
+    const original = monaco.editor.createModel("", "plaintext");
+    const modified = monaco.editor.createModel("", "plaintext");
     const editor = monaco.editor.createDiffEditor(host.current, {
       theme: `grove-${theme}`,
       readOnly: true,
@@ -205,27 +210,50 @@ export function DiffView({
       scrollBeyondLastLine: false,
       padding: { top: 12 },
       occurrencesHighlight: "off",
+      renderOverviewRuler: false,
+      maxComputationTime: 5000,
+      hideUnchangedRegions: {
+        enabled: true,
+        contextLineCount: 4,
+        minimumLineCount: 12,
+      },
     });
+    const updated = editor.onDidUpdateDiff(() => setComputing(false));
     editor.setModel({ original, modified });
+    last.current = { original: "", modified: "", path: "" };
     instance.current = editor;
     return () => {
-      // Detach first: disposing models while the diff widget still observes them causes an async Monaco error.
+      updated.dispose();
       editor.setModel(null);
       editor.dispose();
       original.dispose();
       modified.dispose();
       instance.current = null;
     };
-  }, [path, diff.binary]);
+  }, [diff.binary]);
   useEffect(() => {
+    if (loading) return;
     const model = instance.current?.getModel();
-    if (model) {
-      if (model.original.getValue() !== diff.original)
-        model.original.setValue(diff.original);
-      if (model.modified.getValue() !== diff.modified)
-        model.modified.setValue(diff.modified);
+    if (!model) return;
+    const changed =
+      last.current.original !== diff.original ||
+      last.current.modified !== diff.modified;
+    setComputing(changed);
+    const lang = large ? "plaintext" : language(path);
+    if (model.original.getLanguageId() !== lang)
+      monaco.editor.setModelLanguage(model.original, lang);
+    if (model.modified.getLanguageId() !== lang)
+      monaco.editor.setModelLanguage(model.modified, lang);
+    if (last.current.original !== diff.original)
+      model.original.setValue(diff.original);
+    if (last.current.modified !== diff.modified)
+      model.modified.setValue(diff.modified);
+    if (last.current.path !== path) {
+      instance.current?.getOriginalEditor().setScrollTop(0);
+      instance.current?.getModifiedEditor().setScrollTop(0);
     }
-  }, [diff.original, diff.modified]);
+    last.current = { original: diff.original, modified: diff.modified, path };
+  }, [diff.original, diff.modified, diff.binary, path, large, loading]);
   useEffect(() => {
     instance.current?.updateOptions({ renderSideBySide: sideBySide });
     monaco.editor.setTheme(`grove-${theme}`);
@@ -237,5 +265,22 @@ export function DiffView({
         <p>此文件不支持文本 Diff，可在 Git 列表中暂存。</p>
       </div>
     );
-  return <div ref={host} style={{ width: "100%", height: "100%" }} />;
+  return (
+    <div className="diff-view" data-diff-ready={!loading && !computing}>
+      {(loading || computing || large) && (
+        <div className="diff-progress" role="status">
+          {loading
+            ? "正在加载差异…"
+            : computing
+              ? "正在计算差异…"
+              : "大文件使用纯文本差异；未修改区域已折叠，可按需展开。"}
+        </div>
+      )}
+      <div
+        ref={host}
+        className="diff-host"
+        style={{ visibility: loading ? "hidden" : undefined }}
+      />
+    </div>
+  );
 }

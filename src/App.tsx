@@ -38,6 +38,11 @@ import type {
   Settings,
   TerminalSession,
 } from "../shared/types";
+import {
+  normalizeTerminalShortcut,
+  shortcutFromKey,
+  displayShortcut,
+} from "../shared/shortcuts";
 import type { OpenDocument } from "./components/Editor";
 import FileTree from "./components/FileTree";
 import GitPanel from "./components/GitPanel";
@@ -49,6 +54,7 @@ const Editor = lazy(loadEditor);
 const DiffView = lazy(() =>
   loadEditor().then((m) => ({ default: m.DiffView })),
 );
+const EMPTY_DIFF: GitDiff = { original: "", modified: "", binary: false };
 const api = window.grove;
 const basename = (path: string) => path.split("/").pop() || path;
 const cleanError = (error: unknown) =>
@@ -74,7 +80,8 @@ type DiffState = {
   projectId: string;
   path: string;
   staged: boolean;
-  data: GitDiff;
+  data: GitDiff | null;
+  request: number;
 };
 
 function Dialog({
@@ -202,6 +209,10 @@ export default function App() {
   const [gitBusy, setGitBusy] = useState(false);
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [diff, setDiff] = useState<DiffState | null>(null);
+  const [terminalFocus, setTerminalFocus] = useState(0);
+  const [dockDragging, setDockDragging] = useState(false);
+  const [dockOver, setDockOver] = useState<"bottom" | "right" | null>(null);
+  const diffRequest = useRef(0);
   const [sideBySide, setSideBySide] = useState(true);
   const [compareExternal, setCompareExternal] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
@@ -324,6 +335,9 @@ export default function App() {
       theme: state.settings!.theme,
       widths: state.settings!.widths,
       collapsed: state.settings!.collapsed,
+      terminalDock: state.settings!.terminalDock,
+      terminalWidth: state.settings!.terminalWidth,
+      terminalShortcut: state.settings!.terminalShortcut,
       terminalHeight: state.settings!.terminalHeight,
       terminalMaximized: state.settings!.terminalMaximized,
       terminalFontSize: state.settings!.terminalFontSize,
@@ -467,13 +481,16 @@ export default function App() {
       .then((data) => {
         if (alive) setDiff((current) => current && { ...current, data });
       })
-      .catch(() => {
-        if (alive) setDiff(null);
+      .catch((error) => {
+        if (alive) {
+          setDiff(null);
+          onError(error);
+        }
       });
     return () => {
       alive = false;
     };
-  }, [projectId, gitRefresh, diff?.path, diff?.staged]);
+  }, [projectId, gitRefresh, diff?.path, diff?.staged, diff?.request]);
 
   async function addProject() {
     const added = await api.addProject();
@@ -489,6 +506,18 @@ export default function App() {
         },
     );
   }
+  const gitShowDiff = useEvent((change: Change, staged: boolean) =>
+    run(() => showDiff(change, staged)),
+  );
+  const gitSetMessage = useEvent((value: string) => {
+    if (projectId)
+      setMessages((current) => ({ ...current, [projectId]: value }));
+  });
+  const gitStageFile = useEvent((change: Change, staged: boolean) =>
+    run(() => stage(change, staged)),
+  );
+  const gitCommitFiles = useEvent(() => run(commit));
+  const gitReload = useCallback(() => setGitRefresh((v) => v + 1), []);
   const treeOpen = useEvent((file: string) => run(() => openFile(file)));
   const treeCreate = useEvent((parent: string, directory: boolean) =>
     run(() => createFile(parent, directory)),
@@ -802,8 +831,14 @@ export default function App() {
       return;
     }
     const id = projectId!;
-    const data = await api.gitDiff(id, change.path, staged);
-    setDiff({ projectId: id, path: change.path, staged, data });
+    void loadEditor().catch(onError);
+    setDiff({
+      projectId: id,
+      path: change.path,
+      staged,
+      data: null,
+      request: ++diffRequest.current,
+    });
   }
   async function stage(change: Change, stage: boolean) {
     setGitBusy(true);
@@ -836,6 +871,55 @@ export default function App() {
       (s) => s && { ...s, collapsed: [s.collapsed[0], s.collapsed[1], false] },
     );
   }
+  async function openTerminalShortcut() {
+    if (!projectId) return;
+    if (
+      !sessions.some(
+        (session) => session.projectId === projectId && !session.exited,
+      )
+    ) {
+      await newTerminal();
+    } else if (
+      !settings!.collapsed[2] &&
+      document.activeElement?.classList.contains("xterm-helper-textarea")
+    ) {
+      togglePanel(2);
+      return;
+    } else {
+      setSettings(
+        (s) =>
+          s && { ...s, collapsed: [s.collapsed[0], s.collapsed[1], false] },
+      );
+    }
+    setTerminalFocus((v) => v + 1);
+  }
+  async function configureTerminalShortcut() {
+    const value = await ask({
+      title: "终端快捷键",
+      description:
+        "输入组合键，例如 Command+J、Control+`。支持 Command、Control、Alt、Shift。默认值：Control+`。",
+      value: settings!.terminalShortcut,
+      placeholder: "Command+J",
+    });
+    if (!value) return;
+    const terminalShortcut = normalizeTerminalShortcut(value);
+    await api.saveSettings({ terminalShortcut });
+    setSettings((s) => s && { ...s, terminalShortcut });
+    notify(`终端快捷键已更新为 ${displayShortcut(terminalShortcut)}`);
+  }
+  function dockTerminal(terminalDock: "bottom" | "right") {
+    setSettings(
+      (s) =>
+        s && {
+          ...s,
+          terminalDock,
+          terminalMaximized: false,
+          collapsed: [s.collapsed[0], s.collapsed[1], false],
+        },
+    );
+    setDockDragging(false);
+    setDockOver(null);
+  }
   function togglePanel(index: number) {
     setSettings(
       (s) =>
@@ -867,19 +951,36 @@ export default function App() {
       );
     },
     sidebar: () => togglePanel(1),
-    terminal: () => togglePanel(2),
+    terminal: () => run(openTerminalShortcut),
     "new-terminal": () => run(newTerminal),
   };
   useEffect(() => api?.onMenu((action) => actions.current[action]?.()), []);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (!event.repeat && !event.isComposing) {
+        const shortcut = shortcutFromKey(event);
+        try {
+          if (
+            shortcut &&
+            normalizeTerminalShortcut(shortcut) ===
+              latest.current.settings?.terminalShortcut
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            actions.current.terminal?.();
+            return;
+          }
+        } catch {
+          /* Ordinary editor keys are not terminal accelerators. */
+        }
+      }
       if (event.key === "Escape") {
         setQuickOpen(false);
         setProjectMenu(null);
       }
     };
-    window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
+    window.addEventListener("keydown", keydown, true);
+    return () => window.removeEventListener("keydown", keydown, true);
   }, []);
   function resize(index: number, event: React.PointerEvent<HTMLDivElement>) {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -921,16 +1022,35 @@ export default function App() {
         s && { ...s, terminalHeight: Math.max(140, Math.min(maximum, height)) },
     );
   }
+  function setTerminalWidth(width: number, container: HTMLElement | null) {
+    const maximum = Math.max(180, (container?.clientWidth || 900) - 260);
+    setSettings(
+      (s) =>
+        s && {
+          ...s,
+          terminalWidth: Math.max(
+            Math.min(280, maximum),
+            Math.min(maximum, width),
+          ),
+        },
+    );
+  }
   function resizeTerminal(event: React.PointerEvent<HTMLDivElement>) {
     const element = event.currentTarget;
     const container = element.parentElement;
-    const height =
-      container?.querySelector(".terminal-wrapper")?.getBoundingClientRect()
-        .height || settings!.terminalHeight;
-    const initialY = event.clientY;
+    const right = settings!.terminalDock === "right";
+    const bounds = container
+      ?.querySelector(".terminal-wrapper")
+      ?.getBoundingClientRect();
+    const size = right
+      ? bounds?.width || settings!.terminalWidth
+      : bounds?.height || settings!.terminalHeight;
+    const initial = right ? event.clientX : event.clientY;
     element.setPointerCapture(event.pointerId);
     const move = (e: PointerEvent) =>
-      setTerminalHeight(height + initialY - e.clientY, container);
+      right
+        ? setTerminalWidth(size + initial - e.clientX, container)
+        : setTerminalHeight(size + initial - e.clientY, container);
     const stop = () => {
       element.removeEventListener("pointermove", move);
       element.removeEventListener("pointerup", stop);
@@ -1204,20 +1324,11 @@ export default function App() {
                   <GitPanel
                     status={gitStatus}
                     message={messages[project.id] || ""}
-                    setMessage={(value) =>
-                      setMessages((current) => ({
-                        ...current,
-                        [project.id]: value,
-                      }))
-                    }
-                    onDiff={(change, staged) =>
-                      run(() => showDiff(change, staged))
-                    }
-                    onStage={(change, stageValue) =>
-                      run(() => stage(change, stageValue))
-                    }
-                    onCommit={() => run(commit)}
-                    refresh={() => setGitRefresh((v) => v + 1)}
+                    setMessage={gitSetMessage}
+                    onDiff={gitShowDiff}
+                    onStage={gitStageFile}
+                    onCommit={gitCommitFiles}
+                    refresh={gitReload}
                     busy={gitBusy}
                   />
                 )
@@ -1240,7 +1351,7 @@ export default function App() {
             />
           </>
         )}
-        <div className="editor-stack">
+        <div className={`editor-stack dock-${settings.terminalDock}`}>
           <section
             className="editor-pane"
             aria-label="编辑区"
@@ -1374,7 +1485,8 @@ export default function App() {
               >
                 {activeDiff ? (
                   <DiffView
-                    diff={activeDiff.data}
+                    diff={activeDiff.data || EMPTY_DIFF}
+                    loading={!activeDiff.data}
                     path={activeDiff.path}
                     theme={settings.theme}
                     sideBySide={sideBySide}
@@ -1464,24 +1576,48 @@ export default function App() {
             <div
               className="terminal-resizer"
               role="separator"
-              aria-label="调整终端高度"
-              aria-orientation="horizontal"
+              aria-label={
+                settings.terminalDock === "right"
+                  ? "调整终端宽度"
+                  : "调整终端高度"
+              }
+              aria-orientation={
+                settings.terminalDock === "right" ? "vertical" : "horizontal"
+              }
               aria-valuemin={140}
-              aria-valuenow={Math.round(settings.terminalHeight)}
+              aria-valuenow={Math.round(
+                settings.terminalDock === "right"
+                  ? settings.terminalWidth
+                  : settings.terminalHeight,
+              )}
               tabIndex={0}
-              title="拖动调整终端高度，双击最大化"
+              title="拖动调整终端大小，双击最大化"
               onPointerDown={resizeTerminal}
               onDoubleClick={() =>
                 setSettings((s) => s && { ...s, terminalMaximized: true })
               }
               onKeyDown={(event) => {
-                if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                const right = settings.terminalDock === "right";
+                if (
+                  [
+                    right ? "ArrowLeft" : "ArrowUp",
+                    right ? "ArrowRight" : "ArrowDown",
+                  ].includes(event.key)
+                ) {
                   event.preventDefault();
-                  setTerminalHeight(
-                    settings.terminalHeight +
-                      (event.key === "ArrowUp" ? 24 : -24),
-                    event.currentTarget.parentElement,
-                  );
+                  const delta = ["ArrowUp", "ArrowLeft"].includes(event.key)
+                    ? 24
+                    : -24;
+                  if (right)
+                    setTerminalWidth(
+                      settings.terminalWidth + delta,
+                      event.currentTarget.parentElement,
+                    );
+                  else
+                    setTerminalHeight(
+                      settings.terminalHeight + delta,
+                      event.currentTarget.parentElement,
+                    );
                 }
               }}
             />
@@ -1489,9 +1625,14 @@ export default function App() {
           <div
             className={`terminal-wrapper ${settings.terminalMaximized ? "maximized" : ""}`}
             style={{
-              height: settings.terminalMaximized
-                ? undefined
-                : settings.terminalHeight,
+              height:
+                settings.terminalMaximized || settings.terminalDock === "right"
+                  ? undefined
+                  : settings.terminalHeight,
+              width:
+                settings.terminalMaximized || settings.terminalDock === "bottom"
+                  ? undefined
+                  : settings.terminalWidth,
               display: settings.collapsed[2] ? "none" : "flex",
             }}
           >
@@ -1502,6 +1643,12 @@ export default function App() {
               theme={settings.theme}
               maximized={settings.terminalMaximized}
               fontSize={settings.terminalFontSize}
+              dock={settings.terminalDock}
+              shortcut={settings.terminalShortcut}
+              focusRequest={terminalFocus}
+              onDock={dockTerminal}
+              onDragDock={setDockDragging}
+              onShortcut={() => run(configureTerminalShortcut)}
               onToggleMaximize={() =>
                 setSettings(
                   (s) => s && { ...s, terminalMaximized: !s.terminalMaximized },
@@ -1529,6 +1676,33 @@ export default function App() {
               onError={onError}
             />
           </div>
+          {dockDragging && (
+            <div className="terminal-dock-overlay">
+              {(["right", "bottom"] as const).map((dock) => (
+                <div
+                  key={dock}
+                  className={`terminal-drop-target ${dock} ${dockOver === dock ? "drag-over" : ""}`}
+                  data-testid={`dock-${dock}`}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setDockOver(dock);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (
+                      event.dataTransfer.getData(
+                        "application/x-grove-terminal",
+                      ) === "dock"
+                    )
+                      dockTerminal(dock);
+                  }}
+                >
+                  {dock === "right" ? "释放以停靠到右侧" : "释放以停靠到底部"}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
       <footer className="statusbar">

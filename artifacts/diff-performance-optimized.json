@@ -1,0 +1,103 @@
+{
+  "untrackedFiles": 2000,
+  "diffFiles": 3,
+  "linesPerFile": 18001,
+  "runs": [
+    [
+      {
+        "index": 0,
+        "elapsedMs": 647.6000000238419,
+        "gitCommands": 1
+      },
+      {
+        "index": 1,
+        "elapsedMs": 586.1999999880791,
+        "gitCommands": 1
+      },
+      {
+        "index": 2,
+        "elapsedMs": 555,
+        "gitCommands": 1
+      },
+      {
+        "index": 0,
+        "elapsedMs": 531,
+        "gitCommands": 1
+      },
+      {
+        "index": 1,
+        "elapsedMs": 571.8999999761581,
+        "gitCommands": 1
+      },
+      {
+        "index": 2,
+        "elapsedMs": 540.6999999880791,
+        "gitCommands": 1
+      }
+    ],
+    [
+      {
+        "index": 0,
+        "elapsedMs": 643,
+        "gitCommands": 1
+      },
+      {
+        "index": 1,
+        "elapsedMs": 568.6999999880791,
+        "gitCommands": 1
+      },
+      {
+        "index": 2,
+        "elapsedMs": 552,
+        "gitCommands": 1
+      },
+      {
+        "index": 0,
+        "elapsedMs": 552.5,
+        "gitCommands": 1
+      },
+      {
+        "index": 1,
+        "elapsedMs": 547.8000000119209,
+        "gitCommands": 1
+      },
+      {
+        "index": 2,
+        "elapsedMs": 557.5999999642372,
+        "gitCommands": 1
+      }
+    ],
+    [
+      {
+        "index": 0,
+        "elapsedMs": 651.1999999880791,
+        "gitCommands": 1
+      },
+      {
+        "index": 1,
+        "elapsedMs": 593.8000000119209,
+        "gitCommands": 1
+      },
+      {
+        "index": 2,
+        "elapsedMs": 567.5,
+        "gitCommands": 1
+      },
+      {
+        "index": 0,
+        "elapsedMs": 554.9000000357628,
+        "gitCommands": 1
+      },
+      {
+        "index": 1,
+        "elapsedMs": 569,
+        "gitCommands": 1
+      },
+      {
+        "index": 2,
+        "elapsedMs": 560.6000000238419,
+        "gitCommands": 1
+      }
+    ]
+  ]
+}

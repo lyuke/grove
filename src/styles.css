@@ -828,12 +828,9 @@ code {
   position: relative;
 }
 .terminal-surface {
-  height: 100%;
-  width: 100%;
-  padding: 12px 6px 5px 12px;
-}
-.xterm {
-  height: 100%;
+  position: absolute;
+  inset: 12px 6px 5px 12px;
+  overflow: hidden;
 }
 .terminal-empty {
   height: 100%;
@@ -1326,4 +1323,96 @@ code {
 }
 .terminal-wrapper {
   min-width: 180px;
+}
+
+.editor-stack {
+  position: relative;
+}
+.editor-stack.dock-right {
+  flex-direction: row;
+}
+.dock-right > .terminal-wrapper {
+  height: 100%;
+  max-height: none;
+  max-width: calc(100% - 260px);
+}
+.dock-right > .terminal-wrapper.maximized {
+  max-width: none;
+}
+.dock-right > .terminal-resizer {
+  width: 5px;
+  height: auto;
+  cursor: col-resize;
+}
+.terminal-pane > .panel-heading {
+  min-height: 42px;
+  height: auto;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.terminal-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.terminal-drag-handle {
+  cursor: grab;
+  white-space: nowrap;
+}
+.terminal-drag-handle:active {
+  cursor: grabbing;
+}
+.terminal-shortcut {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.terminal-dock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.terminal-drop-target {
+  position: absolute;
+  border: 2px dashed var(--accent);
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent));
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.terminal-drop-target.right {
+  right: 8px;
+  top: 8px;
+  width: 35%;
+  bottom: 38%;
+}
+.terminal-drop-target.bottom {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  height: 35%;
+}
+.terminal-drop-target.drag-over {
+  background: var(--active);
+  border-style: solid;
+}
+.diff-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.diff-progress {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  color: var(--muted);
+  font-size: 10px;
+  background: var(--panel);
+}
+.diff-host {
+  flex: 1;
+  min-height: 0;
 }

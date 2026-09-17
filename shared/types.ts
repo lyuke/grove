@@ -14,6 +14,9 @@ export interface Settings {
   theme: "dark" | "light";
   widths: number[];
   collapsed: boolean[];
+  terminalDock: "bottom" | "right";
+  terminalWidth: number;
+  terminalShortcut: string;
   terminalHeight: number;
   terminalMaximized: boolean;
   terminalFontSize: number;
@@ -81,6 +84,7 @@ export interface GroveAPI {
   gitDiff(id: string, path: string, staged: boolean): Promise<GitDiff>;
   gitStage(id: string, path: string, stage: boolean): Promise<void>;
   gitCommit(id: string, message: string): Promise<string>;
+  openExternal(url: string): Promise<void>;
   terminalCreate(id: string): Promise<TerminalSession>;
   terminalList(): Promise<TerminalSession[]>;
   terminalAttach(id: string): Promise<string>;

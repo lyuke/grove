@@ -28,6 +28,7 @@ const api: GroveAPI = {
   gitDiff: invoke("gitDiff"),
   gitStage: invoke("gitStage"),
   gitCommit: invoke("gitCommit"),
+  openExternal: invoke("openExternal"),
   terminalCreate: invoke("terminalCreate"),
   terminalList: invoke("terminalList"),
   terminalAttach: invoke("terminalAttach"),

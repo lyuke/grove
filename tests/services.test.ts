@@ -135,6 +135,24 @@ describe("real Git repository", () => {
     expect(changes.find((c) => c.path === ":(glob)*")?.index).toBe("A");
     expect(changes.find((c) => c.path === "other")?.index).toBe("?");
   });
+  it("does not rewrite the Git index while checking status or reading a cached change", async () => {
+    await fs.writeFile(path.join(root, "clean.txt"), "same\n");
+    await service.git(root, ["add", "."]);
+    await service.git(root, ["commit", "-m", "initial"]);
+    const index = path.join(root, ".git/index");
+    const before = await fs.readFile(index);
+    const later = new Date(Date.now() + 3000);
+    await fs.utimes(path.join(root, "clean.txt"), later, later);
+    expect((await service.gitStatus(root)).changes).toEqual([]);
+    expect(await fs.readFile(index)).toEqual(before);
+    await fs.writeFile(path.join(root, "clean.txt"), "changed\n");
+    const change = (await service.gitStatus(root)).changes[0];
+    expect(await service.gitDiff(root, "clean.txt", false, change)).toEqual({
+      original: "same\n",
+      modified: "changed\n",
+      binary: false,
+    });
+  });
   it("reports not-a-repository without fabricating status", async () => {
     const plain = await fs.mkdtemp(path.join(os.tmpdir(), "grove-plain-"));
     try {

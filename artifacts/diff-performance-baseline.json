@@ -1,0 +1,103 @@
+{
+  "untrackedFiles": 2000,
+  "diffFiles": 3,
+  "linesPerFile": 18001,
+  "runs": [
+    [
+      {
+        "index": 0,
+        "elapsedMs": 5341,
+        "gitCommands": 14
+      },
+      {
+        "index": 1,
+        "elapsedMs": 3060.900000035763,
+        "gitCommands": 11
+      },
+      {
+        "index": 2,
+        "elapsedMs": 3435.100000023842,
+        "gitCommands": 12
+      },
+      {
+        "index": 0,
+        "elapsedMs": 4193.900000035763,
+        "gitCommands": 10
+      },
+      {
+        "index": 1,
+        "elapsedMs": 3938.699999988079,
+        "gitCommands": 12
+      },
+      {
+        "index": 2,
+        "elapsedMs": 4031.199999988079,
+        "gitCommands": 12
+      }
+    ],
+    [
+      {
+        "index": 0,
+        "elapsedMs": 4480.600000023842,
+        "gitCommands": 10
+      },
+      {
+        "index": 1,
+        "elapsedMs": 3138.100000023842,
+        "gitCommands": 11
+      },
+      {
+        "index": 2,
+        "elapsedMs": 3203.7000000476837,
+        "gitCommands": 10
+      },
+      {
+        "index": 0,
+        "elapsedMs": 4213.699999988079,
+        "gitCommands": 14
+      },
+      {
+        "index": 1,
+        "elapsedMs": 4237,
+        "gitCommands": 10
+      },
+      {
+        "index": 2,
+        "elapsedMs": 4805.799999952316,
+        "gitCommands": 12
+      }
+    ],
+    [
+      {
+        "index": 0,
+        "elapsedMs": 4174.699999988079,
+        "gitCommands": 11
+      },
+      {
+        "index": 1,
+        "elapsedMs": 2635.699999988079,
+        "gitCommands": 8
+      },
+      {
+        "index": 2,
+        "elapsedMs": 4069.800000011921,
+        "gitCommands": 12
+      },
+      {
+        "index": 0,
+        "elapsedMs": 5220.5,
+        "gitCommands": 12
+      },
+      {
+        "index": 1,
+        "elapsedMs": 4193.299999952316,
+        "gitCommands": 14
+      },
+      {
+        "index": 2,
+        "elapsedMs": 3468.300000011921,
+        "gitCommands": 10
+      }
+    ]
+  ]
+}

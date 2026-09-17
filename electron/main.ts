@@ -7,7 +7,11 @@ import { promisify } from "node:util";
 import * as pty from "node-pty";
 import chokidar, { type FSWatcher } from "chokidar";
 import * as service from "./services";
-import type { Settings, TerminalSession } from "../shared/types";
+import {
+  normalizeTerminalShortcut,
+  shortcutFromKey,
+} from "../shared/shortcuts";
+import type { GitStatus, Settings, TerminalSession } from "../shared/types";
 
 if (process.env.GROVE_USER_DATA)
   app.setPath("userData", process.env.GROVE_USER_DATA);
@@ -54,6 +58,35 @@ async function locked<T>(key: string, fn: () => Promise<T>): Promise<T> {
     if (locks.get(key) === next) locks.delete(key);
   }
 }
+const gitSnapshots = new Map<
+  string,
+  { pending: boolean; time: number; value: Promise<GitStatus> }
+>();
+function readGitStatus(id: string, refresh = false): Promise<GitStatus> {
+  project(id);
+  const cached = gitSnapshots.get(id);
+  if (
+    cached &&
+    (cached.pending || (!refresh && Date.now() - cached.time < 30000))
+  )
+    return cached.value;
+  const entry = {
+    pending: true,
+    time: Date.now(),
+    value: shellEnvironment.then(() => service.gitStatus(project(id).path)),
+  };
+  gitSnapshots.set(id, entry);
+  void entry.value.then(
+    () => {
+      entry.pending = false;
+      entry.time = Date.now();
+    },
+    () => {
+      if (gitSnapshots.get(id) === entry) gitSnapshots.delete(id);
+    },
+  );
+  return entry.value;
+}
 function watch(id: string) {
   if (watchers.has(id)) return;
   const root = project(id).path;
@@ -65,13 +98,15 @@ function watch(id: string) {
       ) || /[/\\]\.git[/\\](objects|logs)([/\\]|$)/.test(file),
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 100 },
   });
-  watcher.on("all", (type, file) =>
+  watcher.on("all", (type, file) => {
+    if (/[\\/]\.git[\\/].*\.lock$/.test(file)) return;
+    gitSnapshots.delete(id);
     send("fileChange", {
       projectId: id,
       path: path.relative(root, file),
       type,
-    }),
-  );
+    });
+  });
   watcher.on("error", (error) => console.error("Watcher:", error));
   watchers.set(id, watcher);
 }
@@ -91,11 +126,28 @@ function setupIPC() {
   const handlers: Record<string, (...args: any[]) => any> = {
     settings: () => settings,
     saveSettings: async (value: Partial<Settings>) => {
+      const shortcut =
+        value.terminalShortcut === undefined
+          ? settings.terminalShortcut
+          : normalizeTerminalShortcut(value.terminalShortcut);
+      const shortcutChanged = shortcut !== settings.terminalShortcut;
+      settings.terminalShortcut = shortcut;
+      if (value.terminalDock === "bottom" || value.terminalDock === "right")
+        settings.terminalDock = value.terminalDock;
+      if (
+        typeof value.terminalWidth === "number" &&
+        Number.isFinite(value.terminalWidth)
+      )
+        settings.terminalWidth = Math.max(
+          240,
+          Math.min(1600, value.terminalWidth),
+        );
       if (value.theme === "dark" || value.theme === "light")
         settings.theme = value.theme;
       if (
-        value.activeProject === undefined ||
-        settings.projects.some((p) => p.id === value.activeProject)
+        "activeProject" in value &&
+        (value.activeProject === undefined ||
+          settings.projects.some((p) => p.id === value.activeProject))
       )
         settings.activeProject = value.activeProject;
       if (Array.isArray(value.widths) && value.widths.length === 3)
@@ -125,6 +177,7 @@ function setupIPC() {
       if (value.workspaces && typeof value.workspaces === "object")
         settings.workspaces = value.workspaces;
       await persist();
+      if (shortcutChanged) configureMenu();
     },
     addProject: async () => {
       const root = await chooseDirectory();
@@ -164,6 +217,7 @@ function setupIPC() {
         throw new Error("此目录已添加");
       await watchers.get(id)?.close();
       watchers.delete(id);
+      gitSnapshots.delete(id);
       p.path = root;
       await persist();
       watch(id);
@@ -179,6 +233,7 @@ function setupIPC() {
         throw new Error("请先关闭此项目的终端");
       await watchers.get(id)?.close();
       watchers.delete(id);
+      gitSnapshots.delete(id);
       settings.projects = settings.projects.filter((p) => p.id !== id);
       delete settings.workspaces[id];
       if (settings.activeProject === id)
@@ -235,18 +290,23 @@ function setupIPC() {
           ? path.join(process.resourcesPath, "bin", "rg")
           : path.join(__dirname, `../resources/${process.arch}/rg`),
       ),
-    gitStatus: (id) =>
-      shellEnvironment.then(() => service.gitStatus(project(id).path)),
-    gitDiff: (id, relative, staged) =>
-      shellEnvironment.then(() =>
-        service.gitDiff(project(id).path, relative, staged),
-      ),
+    gitStatus: (id) => readGitStatus(id, true),
+    gitDiff: async (id, relative, staged) => {
+      const change = (await readGitStatus(id)).changes.find(
+        (c) => c.path === relative,
+      );
+      if (!change) throw new Error("此文件没有 Git 变更，请刷新");
+      return service.gitDiff(project(id).path, relative, staged, change);
+    },
     gitStage: (id, relative, stage) =>
-      locked(`git:${id}`, () =>
-        shellEnvironment.then(() =>
-          service.gitStage(project(id).path, relative, stage),
-        ),
-      ),
+      locked(`git:${id}`, async () => {
+        await shellEnvironment;
+        try {
+          return await service.gitStage(project(id).path, relative, stage);
+        } finally {
+          gitSnapshots.delete(id);
+        }
+      }),
     gitCommit: (id, message) =>
       locked(`git:${id}`, async () => {
         await shellEnvironment;
@@ -272,8 +332,20 @@ function setupIPC() {
           throw new Error(
             "仓库中有此项目目录之外的暂存文件，请打开仓库根目录后提交",
           );
-        return service.git(root, ["commit", "-m", message]);
+        try {
+          return await service.git(root, ["commit", "-m", message]);
+        } finally {
+          gitSnapshots.delete(id);
+        }
       }),
+    openExternal: async (value) => {
+      if (typeof value !== "string" || value.length > 8192)
+        throw new Error("链接无效");
+      const url = new URL(value);
+      if (!["https:", "http:"].includes(url.protocol))
+        throw new Error("仅支持打开 HTTP 或 HTTPS 链接");
+      await shell.openExternal(url.href);
+    },
     terminalCreate: async (id) => {
       await shellEnvironment;
       const p = project(id);
@@ -386,6 +458,26 @@ async function createWindow() {
       sandbox: true,
     },
   });
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing)
+      return;
+    const shortcut = shortcutFromKey({
+      code: input.code,
+      metaKey: input.meta,
+      ctrlKey: input.control,
+      altKey: input.alt,
+      shiftKey: input.shift,
+    });
+    if (!shortcut) return;
+    try {
+      if (normalizeTerminalShortcut(shortcut) === settings.terminalShortcut) {
+        event.preventDefault();
+        send("menu", "terminal");
+      }
+    } catch {
+      /* Other application and editing keys retain their usual behavior. */
+    }
+  });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.webContents.session.setPermissionRequestHandler(
@@ -435,45 +527,7 @@ async function createWindow() {
     await win.loadURL(process.env.GROVE_DEV_URL);
   else await win.loadFile(path.join(__dirname, "../dist/index.html"));
 }
-app.whenReady().then(async () => {
-  // Resolve the Finder login PATH without blocking the first window or file IPC.
-  // Terminal creation waits for it; file browsing does not need the shell.
-  shellEnvironment = (async () => {
-    try {
-      const { stdout } = await promisify(execFile)(
-        process.env.SHELL || "/bin/zsh",
-        ["-ilc", 'printf "\\n__GROVE_PATH__%s" "$PATH"'],
-        { encoding: "utf8", timeout: 5000 },
-      );
-      const marker = stdout.lastIndexOf("__GROVE_PATH__");
-      if (marker >= 0) process.env.PATH = stdout.slice(marker + 14).trim();
-    } catch {
-      process.env.PATH = `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
-    }
-  })();
-  try {
-    settings = {
-      ...service.defaults(),
-      ...JSON.parse(await fs.readFile(settingsFile(), "utf8")),
-    };
-  } catch (error: any) {
-    if (error.code !== "ENOENT") {
-      await fs
-        .copyFile(settingsFile(), settingsFile() + `.backup-${Date.now()}`)
-        .catch(() => {});
-    }
-  }
-  if (process.env.GROVE_TEST_PROJECT && !settings.projects.length) {
-    settings.projects = [
-      {
-        id: "test-project",
-        name: "Test project",
-        path: await fs.realpath(process.env.GROVE_TEST_PROJECT),
-      },
-    ];
-    settings.activeProject = "test-project";
-  }
-  setupIPC();
+function configureMenu() {
   const action = (name: string) => () => send("menu", name);
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -541,8 +595,9 @@ app.whenReady().then(async () => {
             click: action("sidebar"),
           },
           {
+            id: "toggle-terminal",
             label: "切换终端",
-            accelerator: "Ctrl+`",
+            accelerator: settings.terminalShortcut,
             click: action("terminal"),
           },
           { role: "togglefullscreen" },
@@ -562,6 +617,47 @@ app.whenReady().then(async () => {
       { role: "windowMenu" },
     ]),
   );
+}
+app.whenReady().then(async () => {
+  // Resolve the Finder login PATH without blocking the first window or file IPC.
+  // Terminal creation waits for it; file browsing does not need the shell.
+  shellEnvironment = (async () => {
+    try {
+      const { stdout } = await promisify(execFile)(
+        process.env.SHELL || "/bin/zsh",
+        ["-ilc", 'printf "\\n__GROVE_PATH__%s" "$PATH"'],
+        { encoding: "utf8", timeout: 5000 },
+      );
+      const marker = stdout.lastIndexOf("__GROVE_PATH__");
+      if (marker >= 0) process.env.PATH = stdout.slice(marker + 14).trim();
+    } catch {
+      process.env.PATH = `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
+    }
+  })();
+  try {
+    settings = {
+      ...service.defaults(),
+      ...JSON.parse(await fs.readFile(settingsFile(), "utf8")),
+    };
+  } catch (error: any) {
+    if (error.code !== "ENOENT") {
+      await fs
+        .copyFile(settingsFile(), settingsFile() + `.backup-${Date.now()}`)
+        .catch(() => {});
+    }
+  }
+  if (process.env.GROVE_TEST_PROJECT && !settings.projects.length) {
+    settings.projects = [
+      {
+        id: "test-project",
+        name: "Test project",
+        path: await fs.realpath(process.env.GROVE_TEST_PROJECT),
+      },
+    ];
+    settings.activeProject = "test-project";
+  }
+  setupIPC();
+  configureMenu();
   await createWindow();
 });
 app.on("window-all-closed", () => app.quit());

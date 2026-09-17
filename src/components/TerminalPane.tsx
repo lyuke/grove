@@ -7,7 +7,13 @@ import {
   Maximize2,
   Minimize2,
   ChevronDown,
+  ArrowDownToLine,
+  Keyboard,
+  PanelRight,
+  PanelBottom,
+  GripVertical,
 } from "lucide-react";
+import { displayShortcut } from "../../shared/shortcuts";
 import type { TerminalSession } from "../../shared/types";
 
 const TerminalSurface = lazy(() => import("./TerminalSurface"));
@@ -18,6 +24,12 @@ export default function TerminalPane({
   hidden,
   maximized,
   fontSize,
+  dock,
+  shortcut,
+  focusRequest,
+  onDock,
+  onDragDock,
+  onShortcut,
   onToggleMaximize,
   onFontSizeChange,
   onHide,
@@ -31,6 +43,12 @@ export default function TerminalPane({
   hidden: boolean;
   maximized: boolean;
   fontSize: number;
+  dock: "bottom" | "right";
+  shortcut: string;
+  focusRequest: number;
+  onDock(dock: "bottom" | "right"): void;
+  onDragDock(dragging: boolean): void;
+  onShortcut(): void;
   onToggleMaximize(): void;
   onFontSizeChange(size: number): void;
   onHide(): void;
@@ -38,6 +56,7 @@ export default function TerminalPane({
   onClose(id: string): void;
   onError(error: unknown): void;
 }) {
+  const [scrollRequest, setScrollRequest] = useState(0);
   const [selected, setSelected] = useState<Record<string, string>>({});
   const local = sessions.filter((s) => s.projectId === projectId);
   const active =
@@ -50,10 +69,45 @@ export default function TerminalPane({
       aria-label="终端面板"
     >
       <div className="panel-heading">
-        <span>
-          <TerminalSquare size={14} /> 终端
+        <span
+          className="terminal-drag-handle"
+          draggable
+          title="拖动终端到右侧或下方"
+          onDragStart={(event) => {
+            event.dataTransfer.setData("application/x-grove-terminal", "dock");
+            event.dataTransfer.effectAllowed = "move";
+            onDragDock(true);
+          }}
+          onDragEnd={() => onDragDock(false)}
+        >
+          <GripVertical size={14} /> 终端
         </span>
         <div className="actions terminal-actions">
+          <button
+            className="icon-button"
+            title="滚动到底部"
+            onClick={() => setScrollRequest((v) => v + 1)}
+          >
+            <ArrowDownToLine size={14} />
+          </button>
+          <button
+            className="icon-button"
+            title="设置终端快捷键"
+            onClick={onShortcut}
+          >
+            <Keyboard size={14} />
+          </button>
+          <button
+            className="icon-button"
+            title={dock === "bottom" ? "停靠到右侧" : "停靠到底部"}
+            onClick={() => onDock(dock === "bottom" ? "right" : "bottom")}
+          >
+            {dock === "bottom" ? (
+              <PanelRight size={14} />
+            ) : (
+              <PanelBottom size={14} />
+            )}
+          </button>
           <button
             className="icon-button"
             title="缩小终端字体"
@@ -131,6 +185,8 @@ export default function TerminalPane({
               session={session}
               theme={theme}
               fontSize={fontSize}
+              focusRequest={focusRequest}
+              scrollRequest={scrollRequest}
               visible={!hidden && active === session.id}
               onError={onError}
             />
@@ -157,7 +213,14 @@ export default function TerminalPane({
         )}
       </div>
       <div className="terminal-footer">
-        <span className="status-dot" /> 本地 Shell <span>⌃ ⇧ ` 新建</span>
+        <span className="status-dot" /> ⌘ 点击链接
+        <button
+          className="terminal-shortcut"
+          title="设置终端快捷键"
+          onClick={onShortcut}
+        >
+          {displayShortcut(shortcut)} 打开
+        </button>
       </div>
     </section>
   );
