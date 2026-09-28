@@ -81,6 +81,7 @@ type DiffState = {
   projectId: string;
   path: string;
   staged: boolean;
+  commit?: string;
   data: GitDiff | null;
   request: number;
 };
@@ -217,6 +218,7 @@ export default function App() {
   const [panel, setPanel] = useState<"files" | "search" | "git">("files");
   const [revision, setRevision] = useState(0);
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
+  const gitStatusCache = useRef(new Map<string, GitStatus>());
   const [gitRefresh, setGitRefresh] = useState(0);
   const [gitBusy, setGitBusy] = useState(false);
   const [messages, setMessages] = useState<Record<string, string>>({});
@@ -234,6 +236,7 @@ export default function App() {
     null,
   );
   const [ready, setReady] = useState(false);
+  const restoredProjects = useRef(new Set<string>());
   const latest = useRef({ settings, docs, activeKeys });
   latest.current = { settings, docs, activeKeys };
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,20 +284,22 @@ export default function App() {
       const restored: OpenDocument[] = [];
       const keys: Record<string, string> = {};
       const results = await Promise.allSettled(
-        loaded.projects.flatMap((p) =>
-          (loaded.workspaces[p.id]?.tabs || []).map(async (file) => {
-            const data = await api.readFile(p.id, file);
-            return {
-              key: `${p.id}:${file}`,
-              projectId: p.id,
-              path: file,
-              content: data.content,
-              base: data.content,
-              hash: data.hash,
-              position: loaded.workspaces[p.id]?.positions?.[file],
-            };
-          }),
-        ),
+        loaded.projects
+          .filter((p) => p.id === loaded.activeProject)
+          .flatMap((p) =>
+            (loaded.workspaces[p.id]?.tabs || []).map(async (file) => {
+              const data = await api.readFile(p.id, file);
+              return {
+                key: `${p.id}:${file}`,
+                projectId: p.id,
+                path: file,
+                content: data.content,
+                base: data.content,
+                hash: data.hash,
+                position: loaded.workspaces[p.id]?.positions?.[file],
+              };
+            }),
+          ),
       );
       results.forEach((result) => {
         if (result.status === "fulfilled") restored.push(result.value);
@@ -303,6 +308,8 @@ export default function App() {
         if (loaded.workspaces[p.id]?.active)
           keys[p.id] = `${p.id}:${loaded.workspaces[p.id].active}`;
       if (!alive) return;
+      if (loaded.activeProject)
+        restoredProjects.current.add(loaded.activeProject);
       setSettings(loaded);
       setDocs(restored);
       setActiveKeys(keys);
@@ -327,6 +334,92 @@ export default function App() {
     return () => cancelIdleCallback(idle);
   }, [ready, Boolean(settings?.projects.length), onError]);
 
+  useEffect(() => {
+    if (!ready) return;
+    let alive = true;
+    let queue = Promise.resolve();
+    const drain = () => {
+      queue = queue
+        .then(async () => {
+          const requests = await api.takeOpenFiles();
+          for (const request of requests) {
+            if (!alive) return;
+            if (request.error !== undefined) {
+              onError(request.error);
+              continue;
+            }
+            const p = request.project;
+            setSettings(
+              (s) =>
+                s && {
+                  ...s,
+                  projects: s.projects.some((item) => item.id === p.id)
+                    ? s.projects
+                    : [...s.projects, p],
+                  activeProject: p.id,
+                },
+            );
+            if (request.path)
+              await openFile(request.path, undefined, p.id).catch(onError);
+          }
+        })
+        .catch(onError);
+    };
+    const unsubscribe = api.onOpenFiles(drain);
+    drain();
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [ready]);
+
+  // Restore inactive projects only when selected; keep their saved tabs intact until then.
+  useEffect(() => {
+    if (!ready || !projectId || restoredProjects.current.has(projectId)) return;
+    const id = projectId;
+    const workspace = latest.current.settings?.workspaces[id];
+    if (!workspace?.tabs.length) {
+      restoredProjects.current.add(id);
+      return;
+    }
+    let alive = true;
+    void Promise.allSettled(
+      workspace.tabs.map(async (file) => {
+        const data = await api.readFile(id, file);
+        return {
+          key: `${id}:${file}`,
+          projectId: id,
+          path: file,
+          content: data.content,
+          base: data.content,
+          hash: data.hash,
+          position: workspace.positions?.[file],
+        };
+      }),
+    )
+      .then((results) => {
+        if (!alive) return;
+        restoredProjects.current.add(id);
+        setDocs((current) => {
+          const existing = new Set(current.map((doc) => doc.key));
+          return [
+            ...current,
+            ...results.flatMap((result) =>
+              result.status === "fulfilled" && !existing.has(result.value.key)
+                ? [result.value]
+                : [],
+            ),
+          ];
+        });
+        if (results.some((result) => result.status === "rejected"))
+          notify("部分文件无法恢复，请在文件树中检查路径。", true);
+      })
+      .catch(onError);
+    return () => {
+      alive = false;
+    };
+  }, [ready, projectId]);
+
   async function persistWorkspace() {
     if (!latest.current.settings || !ready)
       throw new Error("工作区仍在加载，请稍后重试");
@@ -334,6 +427,25 @@ export default function App() {
     const workspaces: Settings["workspaces"] = {};
     for (const p of state.settings!.projects) {
       const local = state.docs.filter((d) => d.projectId === p.id);
+      if (!restoredProjects.current.has(p.id)) {
+        const saved = state.settings!.workspaces[p.id];
+        workspaces[p.id] = {
+          ...saved,
+          tabs: [
+            ...new Set([...(saved?.tabs || []), ...local.map((d) => d.path)]),
+          ],
+          active:
+            local.find((d) => d.key === state.activeKeys[p.id])?.path ||
+            saved?.active,
+          positions: {
+            ...saved?.positions,
+            ...Object.fromEntries(
+              local.filter((d) => d.position).map((d) => [d.path, d.position!]),
+            ),
+          },
+        };
+        continue;
+      }
       workspaces[p.id] = {
         tabs: local.map((d) => d.path),
         active: local.find((d) => d.key === state.activeKeys[p.id])?.path,
@@ -389,14 +501,20 @@ export default function App() {
   }, [docs]);
   useEffect(() => {
     if (!api) return;
-    let treeTimer: ReturnType<typeof setTimeout>;
+    let treeTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshes = new Map<string, number>();
     const off = api.onFileChange((event) => {
-      clearTimeout(treeTimer);
-      treeTimer = setTimeout(() => {
-        setRevision((v) => v + 1);
-        setGitRefresh((v) => v + 1);
-      }, 250);
+      if (event.projectId === latest.current.settings?.activeProject) {
+        // Throttle bursts so continuous output cannot postpone refresh forever.
+        if (!treeTimer)
+          treeTimer = setTimeout(() => {
+            treeTimer = undefined;
+            setRevision((v) => v + 1);
+            setGitRefresh((v) => v + 1);
+          }, 250);
+      } else {
+        gitStatusCache.current.delete(event.projectId);
+      }
       const targets = latest.current.docs.filter(
         (d) =>
           d.projectId === event.projectId &&
@@ -459,6 +577,7 @@ export default function App() {
     api
       .gitStatus(projectId)
       .then((status) => {
+        gitStatusCache.current.set(projectId, status);
         if (alive) setGitStatus(status);
       })
       .catch((error) => {
@@ -469,7 +588,9 @@ export default function App() {
     };
   }, [projectId, gitRefresh]);
   useEffect(() => {
-    setGitStatus(null);
+    setGitStatus(
+      projectId ? gitStatusCache.current.get(projectId) || null : null,
+    );
     setDiff(null);
     setCompareExternal(false);
     setQuickOpen(false);
@@ -488,8 +609,10 @@ export default function App() {
   useEffect(() => {
     if (!diff || diff.projectId !== projectId) return;
     let alive = true;
-    api
-      .gitDiff(diff.projectId, diff.path, diff.staged)
+    const result = diff.commit
+      ? api.gitCommitDiff(diff.projectId, diff.commit, diff.path)
+      : api.gitDiff(diff.projectId, diff.path, diff.staged);
+    result
       .then((data) => {
         if (alive) setDiff((current) => current && { ...current, data });
       })
@@ -502,7 +625,14 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [projectId, gitRefresh, diff?.path, diff?.staged, diff?.request]);
+  }, [
+    projectId,
+    gitRefresh,
+    diff?.path,
+    diff?.staged,
+    diff?.request,
+    diff?.commit,
+  ]);
 
   async function addProject() {
     const added = await api.addProject();
@@ -517,6 +647,7 @@ export default function App() {
           activeProject: added.id,
         },
     );
+    return added;
   }
   const gitShowDiff = useEvent((change: Change, staged: boolean) =>
     run(() => showDiff(change, staged)),
@@ -527,6 +658,9 @@ export default function App() {
   });
   const gitStageFile = useEvent((change: Change, staged: boolean) =>
     run(() => stage(change, staged)),
+  );
+  const gitDiscardFile = useEvent((change: Change) =>
+    run(() => discard(change)),
   );
   const gitCommitFiles = useEvent(() => run(commit));
   const gitReload = useCallback(() => setGitRefresh((v) => v + 1), []);
@@ -586,6 +720,15 @@ export default function App() {
         ),
       );
     setActiveKeys((current) => ({ ...current, [targetProject]: key }));
+    setSettings((current) =>
+      current?.terminalMaximized && !current.collapsed[2]
+        ? {
+            ...current,
+            terminalMaximized: false,
+            collapsed: [current.collapsed[0], current.collapsed[1], true],
+          }
+        : current,
+    );
     setDiff(null);
     setQuickOpen(false);
   }
@@ -681,11 +824,11 @@ export default function App() {
     setCompareExternal(false);
   }
   async function createFile(parent: string, directory: boolean) {
-    if (!projectId) return;
-    const id = projectId;
+    const id = projectId || (await addProject())?.id;
+    if (!id) return;
     const value = await ask({
       title: directory ? "新建文件夹" : "新建文件",
-      description: "输入相对于项目根目录的路径。",
+      description: "输入相对于项目根目录的路径，缺少的父目录会自动创建。",
       value: parent ? parent + "/" : "",
       placeholder: directory ? "src/components" : "src/example.ts",
     });
@@ -705,10 +848,12 @@ export default function App() {
               { label: "在此新建文件夹", value: "folder" },
             ]
           : []),
+        { label: "在 Finder 中显示", value: "reveal" },
         { label: "重命名 / 移动", value: "move" },
         { label: "移到废纸篓", value: "delete", danger: true },
       ],
     });
+    if (choice === "reveal") return api.revealInFinder(id, entry.path);
     if (choice === "file" || choice === "folder")
       return createFile(entry.path, choice === "folder");
     if (choice === "move") {
@@ -774,6 +919,7 @@ export default function App() {
   }
   async function projectAction(p: Project, action: string) {
     setProjectMenu(null);
+    if (action === "reveal") return api.revealInFinder(p.id, "");
     if (action === "rename") {
       const name = await ask({ title: "修改项目名称", value: p.name });
       if (!name) return;
@@ -836,6 +982,19 @@ export default function App() {
       setSettings((s) => s && { ...s, projects });
     }
   }
+  const showHistoryDiff = useEvent((commit: string, file: string) => {
+    if (!projectId) return;
+    void loadEditor().catch(onError);
+    setCompareExternal(false);
+    setDiff({
+      projectId,
+      path: file,
+      staged: false,
+      commit,
+      data: null,
+      request: ++diffRequest.current,
+    });
+  });
   async function showDiff(change: Change, staged: boolean) {
     if (change.conflict) {
       await openFile(change.path);
@@ -851,6 +1010,43 @@ export default function App() {
       data: null,
       request: ++diffRequest.current,
     });
+  }
+  async function discard(change: Change) {
+    const id = projectId!;
+    const ensureSaved = () => {
+      if (
+        latest.current.docs.some(
+          (d) =>
+            d.projectId === id &&
+            d.path === change.path &&
+            d.content !== d.base,
+        )
+      )
+        throw new Error("请先保存或关闭此文件未保存的编辑，再放弃工作区更改");
+    };
+    ensureSaved();
+    if (change.conflict) throw new Error("请先解决合并冲突");
+    setGitBusy(true);
+    try {
+      if (change.index === "?" || change.index === "D") {
+        if (!(await api.trashFile(id, change.path))) return;
+      } else {
+        const confirmed = await ask({
+          title: `放弃 ${change.path} 的更改？`,
+          description:
+            "此文件的工作区内容将恢复到暂存区版本，已暂存的更改会保留。未暂存的修改将丢失。",
+          choices: [{ label: "放弃更改", value: "discard", danger: true }],
+        });
+        if (!confirmed) return;
+        ensureSaved();
+        await api.gitDiscard(id, change.path);
+      }
+      setDiff(null);
+      setGitRefresh((v) => v + 1);
+      setRevision((v) => v + 1);
+    } finally {
+      setGitBusy(false);
+    }
   }
   async function stage(change: Change, stage: boolean) {
     setGitBusy(true);
@@ -946,6 +1142,8 @@ export default function App() {
   const actions = useRef<Record<string, () => void>>({});
   actions.current = {
     "add-project": () => run(addProject),
+    "new-file": () => run(() => createFile("", false)),
+    "new-folder": () => run(() => createFile("", true)),
     save: () => run(() => saveDoc()),
     "save-all": () => run(saveAll),
     "close-tab": () => {
@@ -1189,6 +1387,10 @@ export default function App() {
                   <div
                     key={p.id}
                     className={`project-row ${p.id === projectId ? "active" : ""}`}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setProjectMenu(p.id);
+                    }}
                   >
                     <button
                       className="project-select"
@@ -1217,6 +1419,11 @@ export default function App() {
                     </button>
                     {projectMenu === p.id && (
                       <div className="project-popover">
+                        <button
+                          onClick={() => run(() => projectAction(p, "reveal"))}
+                        >
+                          在 Finder 中显示
+                        </button>
                         <button
                           onClick={() => run(() => projectAction(p, "rename"))}
                         >
@@ -1365,7 +1572,9 @@ export default function App() {
                     message={messages[project.id] || ""}
                     setMessage={gitSetMessage}
                     onDiff={gitShowDiff}
+                    onHistoryDiff={showHistoryDiff}
                     onStage={gitStageFile}
+                    onDiscard={gitDiscardFile}
                     onCommit={gitCommitFiles}
                     refresh={gitReload}
                     busy={gitBusy}
@@ -1434,7 +1643,8 @@ export default function App() {
               {activeDiff && (
                 <div className="file-tab active diff-tab">
                   <button>
-                    <GitBranch size={13} /> {basename(activeDiff.path)} · Diff
+                    <GitBranch size={13} /> {basename(activeDiff.path)} ·{" "}
+                    {activeDiff.commit ? activeDiff.commit.slice(0, 8) : "Diff"}
                   </button>
                   <button title="关闭 Diff" onClick={() => setDiff(null)}>
                     <X size={12} />
@@ -1459,9 +1669,11 @@ export default function App() {
                       <span>
                         {compareExternal
                           ? "磁盘 ↔ 编辑器"
-                          : activeDiff?.staged
-                            ? "HEAD ↔ 暂存区"
-                            : "暂存区 ↔ 工作区"}
+                          : activeDiff?.commit
+                            ? `提交前 ↔ ${activeDiff.commit.slice(0, 8)}（只读）`
+                            : activeDiff?.staged
+                              ? "HEAD ↔ 暂存区"
+                              : "暂存区 ↔ 工作区"}
                       </span>
                       <button
                         className="icon-button"
@@ -1470,7 +1682,7 @@ export default function App() {
                       >
                         <ChevronsLeftRight size={14} />
                       </button>
-                      {activeDiff && (
+                      {activeDiff && !activeDiff.commit && (
                         <button
                           className="text-button"
                           onClick={() => run(() => openFile(activeDiff.path))}

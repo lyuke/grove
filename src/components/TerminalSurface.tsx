@@ -1,9 +1,26 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { FitAddon } from "@xterm/addon-fit";
+import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
+import symbolsFontUrl from "../assets/fonts/SymbolsNerdFontMono-Regular.woff2?url";
 import type { TerminalSession } from "../../shared/types";
 import "@xterm/xterm/css/xterm.css";
+
+const baseFontFamily = '"SF Mono", Menlo, monospace';
+const terminalFontFamily = '"Grove Symbols", "SF Mono", Menlo, monospace';
+let symbolsFontReady: Promise<void> | undefined;
+function loadSymbolsFont() {
+  return (symbolsFontReady ??= (async () => {
+    const font = new FontFace("Grove Symbols", `url("${symbolsFontUrl}")`, {
+      // Only override icon codepoints; keep text and emoji in their normal fonts.
+      unicodeRange:
+        "U+E000-F8FF, U+F0000-FFFFD, U+23FB-23FE, U+2665, U+26A1, U+2B58",
+    });
+    await font.load();
+    document.fonts.add(font);
+  })());
+}
 
 export default function TerminalSurface({
   session,
@@ -22,6 +39,9 @@ export default function TerminalSurface({
   scrollRequest: number;
   onError(error: unknown): void;
 }) {
+  const [fontState, setFontState] = useState<"loading" | "ready" | "failed">(
+    "loading",
+  );
   const host = useRef<HTMLDivElement>(null);
   const terminal = useRef<XTerminal | null>(null);
   const fit = useRef<FitAddon | null>(null);
@@ -32,6 +52,22 @@ export default function TerminalSurface({
   const userScrollUntil = useRef(0);
   const errorRef = useRef(onError);
   errorRef.current = onError;
+  useEffect(() => {
+    let alive = true;
+    void loadSymbolsFont()
+      .then(() => {
+        if (alive) setFontState("ready");
+      })
+      .catch((error) => {
+        if (alive) {
+          setFontState("failed");
+          errorRef.current(error);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const fitPreservingScroll = useCallback(() => {
     const term = terminal.current;
     if (!term || !host.current?.clientWidth || !host.current?.clientHeight)
@@ -52,22 +88,24 @@ export default function TerminalSurface({
     });
   }, []);
   useEffect(() => {
+    if (fontState === "loading") return;
     const activateLink = (event: MouseEvent, url: string) => {
       event.preventDefault();
       if (event.metaKey)
         void window.grove.openExternal(url).catch(errorRef.current);
     };
     const term = new XTerminal({
-      fontFamily: '"SF Mono", Menlo, monospace',
+      fontFamily: fontState === "ready" ? terminalFontFamily : baseFontFamily,
       fontSize,
       lineHeight: 1.45,
       cursorBlink: true,
       scrollback: 5000,
-      allowProposedApi: false,
+      allowProposedApi: true, // Required by xterm's Unicode provider API.
       scrollOnUserInput: true,
       linkHandler: { activate: activateLink },
     });
     const addon = new FitAddon();
+    term.loadAddon(new UnicodeGraphemesAddon());
     term.loadAddon(addon);
     term.loadAddon(new WebLinksAddon(activateLink));
     terminal.current = term;
@@ -180,7 +218,7 @@ export default function TerminalSurface({
       term.dispose();
       pending = [];
     };
-  }, [session.id]);
+  }, [session.id, fontState]);
   useEffect(() => {
     if (terminal.current)
       terminal.current.options.theme =
@@ -222,14 +260,14 @@ export default function TerminalSurface({
         white: nord ? "#eceff4" : "#cdd6f4",
       };
     }
-  }, [theme]);
+  }, [theme, fontState]);
   useEffect(() => {
     const term = terminal.current;
     if (!term) return;
     fitting.current = true;
     term.options.fontSize = fontSize;
     if (visible) fitPreservingScroll();
-  }, [fontSize, visible]);
+  }, [fontSize, visible, fontState]);
   useEffect(() => {
     if (visible) {
       const frame = requestAnimationFrame(() => {
@@ -238,13 +276,13 @@ export default function TerminalSurface({
       });
       return () => cancelAnimationFrame(frame);
     }
-  }, [visible, focusRequest, fitPreservingScroll]);
+  }, [visible, focusRequest, fitPreservingScroll, fontState]);
   useEffect(() => {
     if (visible && scrollRequest) {
       pinnedToBottom.current = true;
       fitPreservingScroll();
     }
-  }, [scrollRequest, fitPreservingScroll]);
+  }, [scrollRequest, fitPreservingScroll, fontState]);
   return (
     <div
       ref={host}

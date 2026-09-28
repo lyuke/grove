@@ -41,6 +41,10 @@ const TreeRow = memo(function TreeRow({
 }) {
   return (
     <div
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onAction(entry);
+      }}
       className={`tree-row ${selected ? "selected" : ""}`}
       style={{ paddingLeft: 12 + depth * 14 }}
     >

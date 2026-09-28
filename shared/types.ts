@@ -50,6 +50,11 @@ export interface GitCommitInfo {
   date: string;
   message: string;
 }
+export interface GitCommitFile {
+  path: string;
+  originalPath?: string;
+  status: string;
+}
 export interface GitDiff {
   original: string;
   modified: string;
@@ -68,6 +73,13 @@ export interface TerminalSession {
 }
 export interface GroveAPI {
   settings(): Promise<Settings>;
+  takeOpenFiles(): Promise<
+    Array<
+      | { project: Project; path?: string; error?: never }
+      | { error: string; project?: never; path?: never }
+    >
+  >;
+  onOpenFiles(callback: () => void): () => void;
   saveSettings(settings: Partial<Omit<Settings, "projects">>): Promise<void>;
   addProject(): Promise<Project | null>;
   updateProject(id: string, name: string): Promise<Project>;
@@ -85,12 +97,16 @@ export interface GroveAPI {
   createFile(id: string, path: string, directory: boolean): Promise<void>;
   moveFile(id: string, from: string, to: string): Promise<void>;
   trashFile(id: string, path: string): Promise<boolean>;
+  revealInFinder(id: string, path: string): Promise<void>;
   search(id: string, query: string, filenames: boolean): Promise<SearchHit[]>;
   gitHistory(id: string, skip: number): Promise<GitCommitInfo[]>;
   gitCommitDetail(id: string, hash: string): Promise<string>;
+  gitCommitFiles(id: string, hash: string): Promise<GitCommitFile[]>;
+  gitCommitDiff(id: string, hash: string, path: string): Promise<GitDiff>;
   gitStatus(id: string): Promise<GitStatus>;
   gitDiff(id: string, path: string, staged: boolean): Promise<GitDiff>;
   gitStage(id: string, path: string, stage: boolean): Promise<void>;
+  gitDiscard(id: string, path: string): Promise<void>;
   gitCommit(id: string, message: string): Promise<string>;
   openExternal(url: string): Promise<void>;
   terminalCreate(id: string): Promise<TerminalSession>;

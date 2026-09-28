@@ -6,10 +6,10 @@
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.5) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。本地构建的安装包位于 `release/0.1.5/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.8) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.8/`。
 
-- Apple Silicon：`Grove-0.1.5-arm64.dmg`
-- Intel：`Grove-0.1.5-x64.dmg`
+- Apple Silicon：`Grove-0.1.8-arm64.dmg`
+- Intel：`Grove-0.1.8-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -19,7 +19,7 @@
 
 Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你的仓库设置；需要交互认证或签名时可以在终端执行提交。搜索程序 ripgrep 已随安装包附带。
 
-构建与测试详情见 [VERIFY.md](VERIFY.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
+本版构建与测试详情见 [VERIFY-0.1.8.md](VERIFY-0.1.8.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 ## 第一版能力
 
@@ -81,8 +81,8 @@ npm run package        # 生成 arm64 和 x64 DMG
 验证打包后的应用：
 
 ```sh
-GROVE_EXECUTABLE="$PWD/release/0.1.5/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
-GROVE_EXECUTABLE="$PWD/release/0.1.5/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.8/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.8/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
 ```
 
 在 Apple Silicon 上运行 x64 版本需要 Rosetta；转译测试不能代替 Intel 实机测试。
@@ -133,8 +133,21 @@ PLAN.md                 产品范围与阶段验收要求
 布局可设置侧栏显示、终端位置、字号和恢复默认布局；快捷键页可修改终端快捷键。
 配置自动保存到本机，已有配置兼容保留。开源配色许可位于 `resources/licenses/`，随安装包提供。
 
-Git 面板「历史提交」按每页 50 条读取当前分支、当前项目目录的提交，显示作者、日期、提交编号和信息；点击记录可查看完整信息及文件变更统计。
+Git 面板「历史提交」按每页 50 条读取当前分支、当前项目目录的提交，显示作者、日期、提交编号和信息；点击记录会列出变更文件，并在主编辑区自动打开第一个文件的只读代码 Diff；点击其他文件可切换，通过顶部按钮切换并排 / 行内模式。左右内容分别来自父提交与该提交，支持新增、删除、重命名及合并提交相对第一父提交的差异，不读取当前工作区代码。
 设置页和历史组件按需加载；编辑器只注册当前支持的语言，空项目工作区不预加载编辑器。
 打包时前端依赖由 Vite 产物提供，主进程依赖由 esbuild 打包，仅额外携带 PTY 运行时及原生组件。
 
-0.1.5 发布说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。构建后可运行 `node scripts/verify-package.mjs` 检查双架构组件、语言资源和开发文件裁剪结果。
+0.1.8 发布说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。构建后可运行 `node scripts/verify-package.mjs` 检查双架构组件、语言资源和开发文件裁剪结果。
+
+## 新建文件与 Finder 打开
+
+- `⌘ N` 新建文件，`⌘ ⇧ N` 新建文件夹，也可使用文件菜单、文件树工具栏或目录右键菜单。
+- 输入 `src/components/example.ts` 时自动创建缺少的父目录；不会覆盖已有文件。无项目时先选择保存目录。
+- 将新版 Grove.app 放入 Applications 并启动一次后，在 Finder 右击文件，选择「打开方式 → Grove」。也支持将文件拖到 Dock 图标。文件关联使用 Alternate 优先级，不替换默认编辑器。
+- 启动时只恢复当前项目的标签文件；其他项目选中时再读取，未打开项目的标签记录仍保留。
+
+## 终端字符与图标
+
+终端使用 Unicode 15 字素簇处理，组合 emoji 按实际显示宽度计算字符格，避免其后鼠标选区偏移。内置 Nerd Fonts v3.4.0 的等宽符号字体，支持 Powerline、文件夹、Git、操作系统等提示符图标，无需另行安装系统字体。字体仅在打开终端时加载，并在字体就绪后初始化终端测量；普通文本仍使用 SF Mono / Menlo。
+
+字体来源、校验值及转换说明见 [字体说明](src/assets/fonts/README.md)，相关 MIT 许可随应用分发。

@@ -8,6 +8,7 @@ test("terminal shortcut, docking, bottom visibility and command-click links", as
   const project = path.join(root, "project");
   await fs.mkdir(project);
   await fs.writeFile(path.join(project, "hello.txt"), "Terminal integration\n");
+  await fs.writeFile(path.join(project, "other.txt"), "Another file\n");
   const env: Record<string, string> = Object.fromEntries(
     Object.entries(process.env).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -37,6 +38,28 @@ test("terminal shortcut, docking, bottom visibility and command-click links", as
     await expect(input).toBeVisible();
     const sessions = await page.evaluate(() => window.grove.terminalList());
     const id = sessions[0].id;
+    // Opening either a loaded document or a new one must reveal the editor.
+    for (const [file, content] of [
+      ["hello.txt", "Terminal integration"],
+      ["other.txt", "Another file"],
+    ]) {
+      await page
+        .getByRole("button", { name: "最大化终端", exact: true })
+        .click();
+      await expect(page.getByRole("region", { name: "编辑区" })).toBeHidden();
+      await page.locator(".tree-item").filter({ hasText: file }).click();
+      await expect(input).toBeHidden();
+      await expect(page.getByRole("region", { name: "编辑区" })).toBeVisible();
+      await expect(page.locator(".view-lines")).toContainText(content);
+      await page.keyboard.press("Control+Backquote");
+      await expect(input).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "最大化终端", exact: true }),
+      ).toBeVisible();
+      expect(
+        (await page.evaluate(() => window.grove.terminalList()))[0].id,
+      ).toBe(id);
+    }
     await page
       .getByRole("button", { name: "设置终端快捷键", exact: true })
       .first()

@@ -8,6 +8,7 @@ import type {
   FileData,
   FileEntry,
   GitDiff,
+  GitCommitFile,
   GitStatus,
   SearchHit,
   Settings,
@@ -145,6 +146,7 @@ export async function createFile(
   directory: boolean,
 ) {
   const target = await safePath(root, relative);
+  await fs.mkdir(path.dirname(target), { recursive: true });
   if (directory) await fs.mkdir(target);
   else await fs.writeFile(target, "", { flag: "wx" });
 }
@@ -206,28 +208,35 @@ export function parseStatus(output: string): Change[] {
   return changes;
 }
 export async function gitStatus(root: string): Promise<GitStatus> {
+  let output: string, rawPrefix: string;
   try {
-    await git(root, ["rev-parse", "--git-dir"]);
-  } catch {
-    return { repository: false, branch: "", changes: [] };
+    [output, rawPrefix] = await Promise.all([
+      git(root, [
+        "status",
+        "--porcelain=v1",
+        "--branch",
+        "-z",
+        "--untracked-files=all",
+        "--",
+        ".",
+      ]),
+      git(root, ["rev-parse", "--show-prefix"]),
+    ]);
+  } catch (error) {
+    if (/not a git repository/i.test(String(error)))
+      return { repository: false, branch: "", changes: [] };
+    throw error;
   }
-  // --relative paths are scoped to this project, including projects opened below the repo root.
-  const [branch, output, rawPrefix] = await Promise.all([
-    git(root, ["symbolic-ref", "--short", "HEAD"]).catch(() =>
-      git(root, ["rev-parse", "--short", "HEAD"]),
-    ),
-    git(root, [
-      "status",
-      "--porcelain=v1",
-      "-z",
-      "--untracked-files=all",
-      "--",
-      ".",
-    ]),
-    git(root, ["rev-parse", "--show-prefix"]),
-  ]);
+  const headerEnd = output.indexOf("\0");
+  const header = output.slice(3, headerEnd);
+  const branch =
+    header === "HEAD (no branch)"
+      ? (await git(root, ["rev-parse", "--short", "HEAD"])).trim()
+      : header
+          .replace(/^(No commits yet on |Initial commit on )/, "")
+          .split("...")[0];
   const prefix = rawPrefix.trim();
-  const changes = parseStatus(output).map((c) => ({
+  const changes = parseStatus(output.slice(headerEnd + 1)).map((c) => ({
     ...c,
     path:
       prefix && c.path.startsWith(prefix)
@@ -286,6 +295,25 @@ export async function gitDiff(
     modified,
     binary: original.includes("\0") || modified.includes("\0"),
   };
+}
+
+export async function gitDiscard(root: string, relative: string) {
+  await safePath(root, relative);
+  const change = (await gitStatus(root)).changes.find(
+    (c) => c.path === relative,
+  );
+  if (!change || change.worktree === " ")
+    throw new Error("文件状态已变化，请刷新");
+  if (change.conflict) throw new Error("请先解决合并冲突");
+  if (change.index === "?" || change.index === "D")
+    throw new Error("此文件不在暂存区中，请使用移到废纸篓");
+  await git(root, [
+    "--literal-pathspecs",
+    "restore",
+    "--worktree",
+    "--",
+    relative,
+  ]);
 }
 
 export async function gitStage(root: string, relative: string, stage: boolean) {
@@ -424,9 +452,90 @@ export async function gitCommitDetail(root: string, hash: string) {
     "show",
     "--format=fuller",
     "--stat",
-    "--no-renames",
+    "--patch",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--diff-merges=first-parent",
+    "--find-renames",
     hash,
     "--",
     ".",
   ]);
+}
+
+async function commitParent(root: string, hash: string) {
+  if (!/^[a-f0-9]{40,64}$/.test(hash)) throw new Error("提交编号无效");
+  const lineage = (
+    await git(root, ["rev-list", "--parents", "-n", "1", hash, "--"])
+  )
+    .trim()
+    .split(/\s+/);
+  if (lineage[0] !== hash) throw new Error("提交不存在");
+  return lineage[1];
+}
+export async function gitCommitFiles(
+  root: string,
+  hash: string,
+): Promise<GitCommitFile[]> {
+  const parent = await commitParent(root, hash);
+  const output = await git(root, [
+    "diff-tree",
+    "--root",
+    "--no-commit-id",
+    "-r",
+    "--name-status",
+    "-z",
+    "--relative",
+    "--find-renames",
+    ...(parent ? [parent, hash] : [hash]),
+    "--",
+    ".",
+  ]);
+  const fields = output.split("\0");
+  const files: GitCommitFile[] = [];
+  for (let i = 0; i < fields.length && fields[i];) {
+    const status = fields[i++];
+    const first = fields[i++];
+    if (/^[RC]/.test(status))
+      files.push({ status, originalPath: first, path: fields[i++] });
+    else files.push({ status, path: first });
+  }
+  return files;
+}
+export async function gitCommitDiff(
+  root: string,
+  hash: string,
+  relative: string,
+): Promise<GitDiff> {
+  // Resolve from Git's immutable tree, including deleted files. Never read the working copy.
+  const [parent, files] = await Promise.all([
+    commitParent(root, hash),
+    gitCommitFiles(root, hash),
+  ]);
+  const file = files.find((file) => file.path === relative);
+  if (!file) throw new Error("此提交中没有该文件的变更");
+  const read = async (
+    revision: string | undefined,
+    filePath: string,
+    absent: boolean,
+  ) => {
+    if (!revision || absent) return { text: "", binary: false };
+    const object = `${revision}:./${filePath}`;
+    const type = (await git(root, ["cat-file", "-t", object])).trim();
+    if (type !== "blob") return { text: "", binary: true };
+    const size = Number((await git(root, ["cat-file", "-s", object])).trim());
+    if (size > 5 * 1024 * 1024) throw new Error("文件超过 5 MB，暂不支持 Diff");
+    const text = await git(root, ["cat-file", "blob", object]);
+    return { text, binary: text.includes("\0") };
+  };
+  const [before, after] = await Promise.all([
+    read(parent, file.originalPath || file.path, file.status === "A"),
+    read(hash, file.path, file.status === "D"),
+  ]);
+  return {
+    original: before.text,
+    modified: after.text,
+    binary: before.binary || after.binary,
+  };
 }

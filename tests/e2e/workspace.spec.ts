@@ -91,7 +91,28 @@ test("settings and history work and persist", async () => {
   await page.getByRole("button", { name: "历史提交", exact: true }).click();
   await page.locator(".history-commit").filter({ hasText: "initial" }).click();
   await expect(page.locator(".commit-detail")).toContainText("hello.txt");
+  await expect(
+    page.locator('.diff-view[data-diff-ready="true"]'),
+  ).toBeVisible();
+  await expect(page.locator(".monaco-diff-editor")).toContainText(
+    "Hello Grove",
+  );
+  await page
+    .locator(".history-file")
+    .filter({ hasText: "src/main.ts" })
+    .click();
+  await expect(page.locator(".monaco-diff-editor")).toContainText(
+    "export const greeting",
+  );
+  await expect(
+    page.getByRole("button", { name: "编辑文件", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "切换并排 / 行内 Diff" }).click();
+  await expect(
+    page.locator('.diff-view[data-diff-ready="true"]'),
+  ).toBeVisible();
   await page.screenshot({ path: "artifacts/history-nord.png" });
+  await page.getByRole("button", { name: "关闭 Diff", exact: true }).click();
   await page.getByRole("button", { name: "更改", exact: true }).click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page
@@ -123,7 +144,8 @@ test("edit, save, external conflict, search, Git commit and interactive PTY", as
   await expect
     .poll(() => fs.readFile(path.join(root, "project/hello.txt"), "utf8"))
     .toBe("Hello Grove\n");
-  const line = page.locator(".view-lines .view-line").first();
+  const line = page.locator(".view-lines .view-line:visible").first();
+  await expect(line).toBeVisible();
   const bounds = await line.boundingBox();
   await page.mouse.move(bounds!.x + 1, bounds!.y + 10);
   await page.mouse.down();
@@ -489,9 +511,15 @@ test("bottom terminal resizes, zooms, maximizes and restores without restarting 
     steps: 8,
   });
   await page.mouse.up();
+  // The window manager can constrain a new window to the available display.
+  // Dragging must grow the pane while retaining room for the editor.
   await expect
-    .poll(async () => Math.round((await panel.boundingBox())!.height))
-    .toBe(Math.round(before!.height + 80));
+    .poll(async () => (await panel.boundingBox())!.height)
+    .toBeGreaterThan(before!.height);
+  expect((await panel.boundingBox())!.height).toBeLessThanOrEqual(
+    before!.height + 81,
+  );
+  expect((await editor.boundingBox())!.height).toBeGreaterThanOrEqual(150);
   const resized = (await panel.boundingBox())!.height;
 
   await page.getByRole("button", { name: "放大终端字体", exact: true }).click();

@@ -1,0 +1,36 @@
+{
+  "inactiveTabs": 120,
+  "inactiveBytes": 20160000,
+  "runs": [
+    {
+      "executable": "release/0.1.5/mac-arm64/Grove.app/Contents/MacOS/Grove",
+      "run": 0,
+      "startupToEditorMs": 2702.9900000000002
+    },
+    {
+      "executable": "release/0.1.6/mac-arm64/Grove.app/Contents/MacOS/Grove",
+      "run": 0,
+      "startupToEditorMs": 865.2022499999998
+    },
+    {
+      "executable": "release/0.1.5/mac-arm64/Grove.app/Contents/MacOS/Grove",
+      "run": 1,
+      "startupToEditorMs": 785.5762499999996
+    },
+    {
+      "executable": "release/0.1.6/mac-arm64/Grove.app/Contents/MacOS/Grove",
+      "run": 1,
+      "startupToEditorMs": 717.6861249999993
+    },
+    {
+      "executable": "release/0.1.5/mac-arm64/Grove.app/Contents/MacOS/Grove",
+      "run": 2,
+      "startupToEditorMs": 1402.9744579999997
+    },
+    {
+      "executable": "release/0.1.6/mac-arm64/Grove.app/Contents/MacOS/Grove",
+      "run": 2,
+      "startupToEditorMs": 844.9532499999996
+    }
+  ]
+}

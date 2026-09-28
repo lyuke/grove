@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import * as pty from "node-pty";
+import type * as pty from "node-pty";
 import chokidar, { type FSWatcher } from "chokidar";
 import * as service from "./services";
 import {
@@ -16,6 +16,17 @@ import type { GitStatus, Settings, TerminalSession } from "../shared/types";
 if (process.env.GROVE_USER_DATA)
   app.setPath("userData", process.env.GROVE_USER_DATA);
 let win: BrowserWindow;
+const pendingOpenFiles: string[] = [];
+app.on("open-file", (event, file) => {
+  event.preventDefault();
+  pendingOpenFiles.push(file);
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+    send("openFiles", null);
+  }
+});
 let settings: Settings = service.defaults();
 let dirty = false;
 let quitting = false;
@@ -62,8 +73,17 @@ const gitSnapshots = new Map<
   string,
   { pending: boolean; time: number; value: Promise<GitStatus> }
 >();
+const gitStatusRequests = new Map<string, Promise<GitStatus>>();
 function readGitStatus(id: string, refresh = false): Promise<GitStatus> {
-  project(id);
+  const root = project(id).path;
+  const requestKey = `${id}:${root}`;
+  const pending = gitStatusRequests.get(requestKey);
+  if (pending)
+    return pending.then((status) =>
+      gitSnapshots.get(id)?.value === pending
+        ? status
+        : readGitStatus(id, refresh),
+    );
   const cached = gitSnapshots.get(id);
   if (
     cached &&
@@ -73,15 +93,18 @@ function readGitStatus(id: string, refresh = false): Promise<GitStatus> {
   const entry = {
     pending: true,
     time: Date.now(),
-    value: shellEnvironment.then(() => service.gitStatus(project(id).path)),
+    value: service.gitStatus(root),
   };
+  gitStatusRequests.set(requestKey, entry.value);
   gitSnapshots.set(id, entry);
   void entry.value.then(
     () => {
+      gitStatusRequests.delete(requestKey);
       entry.pending = false;
       entry.time = Date.now();
     },
     () => {
+      gitStatusRequests.delete(requestKey);
       if (gitSnapshots.get(id) === entry) gitSnapshots.delete(id);
     },
   );
@@ -125,6 +148,42 @@ function terminal(id: string) {
 function setupIPC() {
   const handlers: Record<string, (...args: any[]) => any> = {
     settings: () => settings,
+    takeOpenFiles: () =>
+      locked("open-files", async () => {
+        const requests = pendingOpenFiles.splice(0);
+        const results = [];
+        for (const file of requests) {
+          try {
+            const target = await fs.realpath(file);
+            const stat = await fs.stat(target);
+            const root = stat.isDirectory() ? target : path.dirname(target);
+            let item = settings.projects
+              .filter(
+                (p) =>
+                  target === p.path || target.startsWith(p.path + path.sep),
+              )
+              .sort((a, b) => b.path.length - a.path.length)[0];
+            if (!item) {
+              item = {
+                id: randomUUID(),
+                name: path.basename(root),
+                path: root,
+              };
+              settings.projects.push(item);
+            }
+            results.push({
+              project: item,
+              path: stat.isDirectory()
+                ? undefined
+                : path.relative(item.path, target),
+            });
+          } catch (error) {
+            results.push({ error: `无法打开 ${file}: ${String(error)}` });
+          }
+        }
+        if (requests.length) await persist();
+        return results;
+      }),
     saveSettings: async (value: Partial<Settings>) => {
       const shortcut =
         value.terminalShortcut === undefined
@@ -265,6 +324,11 @@ function setupIPC() {
     createFile: (id, relative, directory) =>
       service.createFile(project(id).path, relative, directory),
     moveFile: (id, from, to) => service.moveFile(project(id).path, from, to),
+    revealInFinder: async (id, relative) => {
+      const target = await service.safePath(project(id).path, relative, true);
+      await fs.access(target);
+      shell.showItemInFolder(target);
+    },
     trashFile: async (id, relative) => {
       const root = project(id).path;
       await service.safePath(root, relative);
@@ -294,6 +358,10 @@ function setupIPC() {
           : path.join(__dirname, `../resources/${process.arch}/rg`),
       ),
     gitHistory: (id, skip) => service.gitHistory(project(id).path, skip),
+    gitCommitFiles: (id, hash) =>
+      service.gitCommitFiles(project(id).path, hash),
+    gitCommitDiff: (id, hash, relative) =>
+      service.gitCommitDiff(project(id).path, hash, relative),
     gitCommitDetail: (id, hash) =>
       service.gitCommitDetail(project(id).path, hash),
     gitStatus: (id) => readGitStatus(id, true),
@@ -304,6 +372,17 @@ function setupIPC() {
       if (!change) throw new Error("此文件没有 Git 变更，请刷新");
       return service.gitDiff(project(id).path, relative, staged, change);
     },
+    gitDiscard: (id, relative) =>
+      locked(`git:${id}`, () =>
+        locked(`file:${id}:${relative}`, async () => {
+          await shellEnvironment;
+          try {
+            await service.gitDiscard(project(id).path, relative);
+          } finally {
+            gitSnapshots.delete(id);
+          }
+        }),
+      ),
     gitStage: (id, relative, stage) =>
       locked(`git:${id}`, async () => {
         await shellEnvironment;
@@ -363,7 +442,8 @@ function setupIPC() {
         ),
       );
       delete processEnv.ELECTRON_RUN_AS_NODE;
-      const child = pty.spawn(shellPath, ["-l"], {
+      const { spawn } = await import("node-pty");
+      const child = spawn(shellPath, ["-l"], {
         name: "xterm-256color",
         cols: 80,
         rows: 24,
@@ -557,6 +637,16 @@ function configureMenu() {
       {
         label: "文件",
         submenu: [
+          {
+            label: "新建文件…",
+            accelerator: "CmdOrCtrl+N",
+            click: action("new-file"),
+          },
+          {
+            label: "新建文件夹…",
+            accelerator: "CmdOrCtrl+Shift+N",
+            click: action("new-folder"),
+          },
           {
             label: "添加项目…",
             accelerator: "CmdOrCtrl+O",

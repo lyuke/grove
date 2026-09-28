@@ -77,6 +77,70 @@ describe("real Git repository", () => {
       path.join(root, ".git/hooks"),
     ]);
   });
+  it("reads unborn, normal and detached branches with status", async () => {
+    expect(await service.gitStatus(root)).toEqual({
+      repository: true,
+      branch: "main",
+      changes: [],
+    });
+    await fs.writeFile(path.join(root, "hello.txt"), "hello");
+    await service.git(root, ["add", "."]);
+    await service.git(root, ["commit", "-m", "initial"]);
+    expect((await service.gitStatus(root)).branch).toBe("main");
+    await service.git(root, ["checkout", "--detach"]);
+    expect((await service.gitStatus(root)).branch).toBe(
+      (await service.git(root, ["rev-parse", "--short", "HEAD"])).trim(),
+    );
+  });
+  it("discards only the selected worktree path and preserves the index", async () => {
+    await fs.mkdir(path.join(root, "nested"));
+    const file = "中文 [file].txt";
+    const target = path.join(root, "nested", file);
+    const sibling = path.join(root, "nested", "中文 f.txt");
+    await fs.writeFile(target, "original\n");
+    await fs.writeFile(sibling, "sibling\n");
+    await service.git(root, ["add", "."]);
+    await service.git(root, ["commit", "-m", "initial"]);
+    await fs.writeFile(target, "staged\n");
+    await service.git(root, ["add", "."]);
+    await fs.writeFile(target, "unstaged\n");
+    await fs.writeFile(sibling, "keep sibling changes\n");
+    await service.gitDiscard(path.join(root, "nested"), file);
+    expect(await fs.readFile(target, "utf8")).toBe("staged\n");
+    expect(await service.git(root, ["show", `:nested/${file}`])).toBe(
+      "staged\n",
+    );
+    expect(await fs.readFile(sibling, "utf8")).toBe("keep sibling changes\n");
+    await fs.unlink(target);
+    await service.gitDiscard(path.join(root, "nested"), file);
+    expect(await fs.readFile(target, "utf8")).toBe("staged\n");
+    await expect(service.gitDiscard(root, "../outside")).rejects.toThrow(
+      "项目目录之外",
+    );
+  });
+  it("refuses to discard untracked files or merge conflicts", async () => {
+    await fs.writeFile(path.join(root, "new.txt"), "keep");
+    await expect(service.gitDiscard(root, "new.txt")).rejects.toThrow(
+      "移到废纸篓",
+    );
+    expect(await fs.readFile(path.join(root, "new.txt"), "utf8")).toBe("keep");
+    await service.git(root, ["add", "."]);
+    await service.git(root, ["commit", "-m", "initial"]);
+    await service.git(root, ["checkout", "-b", "other"]);
+    await fs.writeFile(path.join(root, "new.txt"), "other");
+    await service.git(root, ["commit", "-am", "other"]);
+    await service.git(root, ["checkout", "main"]);
+    await fs.writeFile(path.join(root, "new.txt"), "main");
+    await service.git(root, ["commit", "-am", "main"]);
+    await service.git(root, ["merge", "other"]).catch(() => {});
+    const conflict = await fs.readFile(path.join(root, "new.txt"), "utf8");
+    await expect(service.gitDiscard(root, "new.txt")).rejects.toThrow(
+      "合并冲突",
+    );
+    expect(await fs.readFile(path.join(root, "new.txt"), "utf8")).toBe(
+      conflict,
+    );
+  });
   it("stages and unstages before first commit, then separates index and worktree diffs", async () => {
     await fs.writeFile(path.join(root, "hello world.txt"), "one\n");
     await service.gitStage(root, "hello world.txt", true);
@@ -164,6 +228,32 @@ describe("real Git repository", () => {
 });
 
 describe("commit history", () => {
+  it("shows actual edits and deletions, including the initial commit", async () => {
+    await service.git(root, ["init"]);
+    await service.git(root, ["config", "user.name", "Test"]);
+    await service.git(root, ["config", "user.email", "test@example.com"]);
+    await service.git(root, ["config", "commit.gpgsign", "false"]);
+    await service.createFile(root, "nested/deep/file.txt", false);
+    await fs.writeFile(path.join(root, "nested/deep/file.txt"), "before\n");
+    await service.git(root, ["add", "."]);
+    await service.git(root, ["commit", "-m", "initial"]);
+    let commits = await service.gitHistory(root, 0);
+    expect(await service.gitCommitDetail(root, commits[0].hash)).toContain(
+      "+before",
+    );
+    await fs.writeFile(path.join(root, "nested/deep/file.txt"), "after\n");
+    await service.git(root, ["commit", "-am", "edit"]);
+    commits = await service.gitHistory(root, 0);
+    const detail = await service.gitCommitDetail(root, commits[0].hash);
+    expect(detail).toContain("-before");
+    expect(detail).toContain("+after");
+    await fs.unlink(path.join(root, "nested/deep/file.txt"));
+    await service.git(root, ["commit", "-am", "delete"]);
+    commits = await service.gitHistory(root, 0);
+    expect(await service.gitCommitDetail(root, commits[0].hash)).toContain(
+      "-after",
+    );
+  });
   it("handles empty repositories, multiline messages and paginates without duplicates", async () => {
     await service.git(root, ["init"]);
     expect(await service.gitHistory(root, 0)).toEqual([]);
@@ -189,5 +279,107 @@ describe("commit history", () => {
     await expect(service.gitCommitDetail(root, "--all")).rejects.toThrow(
       "提交编号",
     );
+  });
+});
+
+describe("historical code diff", () => {
+  async function init() {
+    await service.git(root, ["init", "-b", "main"]);
+    for (const [key, value] of [
+      ["user.name", "Test"],
+      ["user.email", "test@example.com"],
+      ["commit.gpgsign", "false"],
+    ])
+      await service.git(root, ["config", key, value]);
+  }
+  async function commit(message: string) {
+    await service.git(root, ["add", "."]);
+    await service.git(root, ["commit", "-m", message]);
+    return (await service.git(root, ["rev-parse", "HEAD"])).trim();
+  }
+  it("reads initial, modified, renamed, deleted and binary files from immutable trees", async () => {
+    await init();
+    const name = "中文 space.txt";
+    await fs.writeFile(path.join(root, name), "before\n");
+    const first = await commit("first");
+    expect(await service.gitCommitFiles(root, first)).toEqual([
+      { path: name, status: "A" },
+    ]);
+    expect(await service.gitCommitDiff(root, first, name)).toEqual({
+      original: "",
+      modified: "before\n",
+      binary: false,
+    });
+    await fs.writeFile(path.join(root, name), "after\n");
+    const second = await commit("edit");
+    await fs.writeFile(path.join(root, name), "uncommitted\n");
+    expect(await service.gitCommitDiff(root, second, name)).toEqual({
+      original: "before\n",
+      modified: "after\n",
+      binary: false,
+    });
+    await fs.writeFile(path.join(root, name), "after\n");
+    await fs.rename(path.join(root, name), path.join(root, "renamed.txt"));
+    const renamed = await commit("rename");
+    expect(await service.gitCommitFiles(root, renamed)).toEqual([
+      { path: "renamed.txt", originalPath: name, status: "R100" },
+    ]);
+    expect(await service.gitCommitDiff(root, renamed, "renamed.txt")).toEqual({
+      original: "after\n",
+      modified: "after\n",
+      binary: false,
+    });
+    await fs.unlink(path.join(root, "renamed.txt"));
+    const deleted = await commit("delete");
+    expect(await service.gitCommitDiff(root, deleted, "renamed.txt")).toEqual({
+      original: "after\n",
+      modified: "",
+      binary: false,
+    });
+    await fs.writeFile(path.join(root, "binary"), Buffer.from([0, 1, 2]));
+    const binary = await commit("binary");
+    expect((await service.gitCommitDiff(root, binary, "binary")).binary).toBe(
+      true,
+    );
+    await expect(
+      service.gitCommitDiff(root, second, "../outside"),
+    ).rejects.toThrow("没有该文件");
+    await expect(service.gitCommitFiles(root, "--all")).rejects.toThrow(
+      "提交编号",
+    );
+  });
+  it("scopes nested projects and compares merge commits against the first parent", async () => {
+    await init();
+    await fs.mkdir(path.join(root, "nested"));
+    await fs.writeFile(path.join(root, "nested/file.txt"), "base\n");
+    await fs.writeFile(path.join(root, "outside.txt"), "outside\n");
+    const first = await commit("base");
+    expect(
+      await service.gitCommitFiles(path.join(root, "nested"), first),
+    ).toEqual([{ path: "file.txt", status: "A" }]);
+    expect(
+      (
+        await service.gitCommitDiff(
+          path.join(root, "nested"),
+          first,
+          "file.txt",
+        )
+      ).modified,
+    ).toBe("base\n");
+    await service.git(root, ["checkout", "-b", "feature"]);
+    await fs.writeFile(path.join(root, "nested/file.txt"), "feature\n");
+    await commit("feature");
+    await service.git(root, ["checkout", "main"]);
+    await fs.writeFile(path.join(root, "outside.txt"), "main\n");
+    await commit("main change");
+    await service.git(root, ["merge", "--no-ff", "feature", "-m", "merge"]);
+    const merged = (await service.git(root, ["rev-parse", "HEAD"])).trim();
+    expect(
+      await service.gitCommitDiff(
+        path.join(root, "nested"),
+        merged,
+        "file.txt",
+      ),
+    ).toEqual({ original: "base\n", modified: "feature\n", binary: false });
   });
 });

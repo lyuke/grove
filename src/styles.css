@@ -1587,3 +1587,36 @@ code {
   font-size: 11px;
   line-height: 1.7;
 }
+
+.patch-added {
+  color: var(--success, #81b88b);
+}
+.patch-removed {
+  color: var(--danger, #e78b8b);
+}
+.patch-hunk {
+  color: var(--accent, #96b8db);
+}
+.commit-detail pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.tree-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 28px;
+}
+
+.history-file.git-file {
+  width: 100%;
+  text-align: left;
+  padding: 8px 6px;
+}
+.history-file.git-file > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.history-file[aria-pressed="true"],
+.history-commit[aria-pressed="true"] {
+  background: var(--selected);
+}

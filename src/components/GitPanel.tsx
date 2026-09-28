@@ -7,6 +7,7 @@ import {
   Minus,
   RefreshCw,
   AlertTriangle,
+  Undo2,
 } from "lucide-react";
 import type { Change, GitStatus } from "../../shared/types";
 const GitHistory = lazy(() => import("./GitHistory"));
@@ -18,6 +19,8 @@ function GitPanel({
   setMessage,
   onDiff,
   onStage,
+  onDiscard,
+  onHistoryDiff,
   onCommit,
   refresh,
   busy,
@@ -28,7 +31,9 @@ function GitPanel({
   message: string;
   setMessage(v: string): void;
   onDiff(change: Change, staged: boolean): void;
+  onHistoryDiff(hash: string, file: string): void;
   onStage(change: Change, stage: boolean): void;
+  onDiscard(change: Change): void;
   onCommit(): void;
   refresh(): void;
   busy: boolean;
@@ -87,6 +92,16 @@ function GitPanel({
             </small>
           </span>
         </button>
+        {!staged && !change.conflict && (
+          <button
+            className="icon-button"
+            disabled={busy}
+            title={`放弃更改 ${change.path}`}
+            onClick={() => onDiscard(change)}
+          >
+            <Undo2 size={14} />
+          </button>
+        )}
         <button
           className="icon-button"
           disabled={busy}
@@ -117,7 +132,11 @@ function GitPanel({
       </div>
       {history ? (
         <Suspense fallback={<p>正在加载…</p>}>
-          <GitHistory projectId={projectId} revision={revision} />
+          <GitHistory
+            projectId={projectId}
+            revision={revision}
+            onDiff={onHistoryDiff}
+          />
         </Suspense>
       ) : (
         <>
