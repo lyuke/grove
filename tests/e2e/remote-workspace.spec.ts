@@ -30,6 +30,9 @@ test("SSH configuration opens a remote project with files, Git and a real termin
   );
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.GROVE_TEST_PROJECT;
+  const localRepo = path.join(root, "local", path.basename(repo));
+  await fs.mkdir(localRepo, { recursive: true });
+  env.GROVE_TEST_PROJECT = localRepo;
   env.GROVE_USER_DATA = path.join(root, "state");
   env.KRB5CCNAME = `FILE:${path.join(root, "missing-ticket")}`;
   const app = await electron.launch({
@@ -89,11 +92,24 @@ test("SSH configuration opens a remote project with files, Git and a real termin
     await page
       .getByRole("button", { name: "打开远端项目", exact: true })
       .click();
-    await expect(page.locator(".project-select")).toContainText(
+    await expect(page.locator(".remote-project .project-select")).toContainText(
       "SSH · 测试 SSH",
     );
-    const projectId = (await page.evaluate(() => window.grove.settings()))
-      .projects[0].id;
+    const projectId = (
+      await page.evaluate(() => window.grove.settings())
+    ).projects.find((p) => p.remoteId)!.id;
+    await expect(page.locator(".local-project .project-location")).toHaveText(
+      "本地",
+    );
+    await expect(page.locator(".remote-project .project-location")).toHaveText(
+      "远端",
+    );
+    await expect(page.locator(".titlebar > .project-location")).toContainText(
+      "grove-test",
+    );
+    await page.getByLabel("搜索项目", { exact: true }).fill("grove-test");
+    await expect(page.locator(".project-select")).toHaveCount(1);
+    await page.getByLabel("搜索项目", { exact: true }).fill("");
     expect(
       await page.evaluate(
         (id) => window.grove.search(id, "remote original", false),
@@ -147,6 +163,9 @@ test("SSH configuration opens a remote project with files, Git and a real termin
       .first()
       .click();
     await expect(page.locator(".terminal-tab")).toContainText("SSH");
+    await expect(
+      page.locator(".terminal-pane .project-location"),
+    ).toContainText("grove-test");
     const session = (await page.evaluate(() => window.grove.terminalList()))[0];
     expect(session.projectId).toBe(projectId);
     await page.evaluate(
@@ -177,7 +196,7 @@ test("SSH configuration opens a remote project with files, Git and a real termin
       { timeout: 10000 },
     );
     await page.reload();
-    await expect(page.locator(".project-select")).toContainText(
+    await expect(page.locator(".remote-project .project-select")).toContainText(
       "SSH · 测试 SSH",
     );
     await expect(page.locator(".view-lines")).toContainText(
@@ -186,6 +205,21 @@ test("SSH configuration opens a remote project with files, Git and a real termin
     expect((await page.evaluate(() => window.grove.terminalList()))[0].id).toBe(
       session.id,
     );
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].showInactive(),
+    );
+    await page.screenshot({ path: "/tmp/grove-remote-identity.png" });
+    await page.locator(".local-project .project-select").click();
+    await expect(page.locator(".titlebar > .project-location")).toHaveText(
+      "本地本机",
+    );
+    await expect(page.locator(".local-label .project-location")).toHaveText(
+      "本地本机",
+    );
+    await expect(
+      page.locator(".terminal-pane .project-location"),
+    ).toContainText("本地");
+    await page.screenshot({ path: "/tmp/grove-local-identity.png" });
   } finally {
     const exited = new Promise((resolve) =>
       app.process().once("exit", resolve),

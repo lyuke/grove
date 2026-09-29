@@ -28,6 +28,8 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
+  Monitor,
+  Server,
 } from "lucide-react";
 import type {
   Change,
@@ -48,6 +50,7 @@ import FileTree from "./components/FileTree";
 import GitPanel from "./components/GitPanel";
 import SearchPanel from "./components/SearchPanel";
 import TerminalPane from "./components/TerminalPane";
+import ProjectLocation from "./components/ProjectLocation";
 
 const loadEditor = () => import("./components/Editor");
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
@@ -1337,8 +1340,16 @@ export default function App() {
       </div>
     );
   const visibleProjects = settings.projects.filter((p) =>
-    `${p.name} ${p.path}`.toLowerCase().includes(projectFilter.toLowerCase()),
+    `${p.name} ${p.path} ${p.remoteId ? `远端 ${settings.remotes?.find((r) => r.id === p.remoteId)?.host || ""} ${settings.remotes?.find((r) => r.id === p.remoteId)?.name || ""}` : "本地"}`
+      .toLowerCase()
+      .includes(projectFilter.toLowerCase()),
   );
+  const currentRemote = settings.remotes?.find(
+    (r) => r.id === project?.remoteId,
+  );
+  const currentEndpoint = currentRemote
+    ? `${currentRemote.user ? `${currentRemote.user}@` : ""}${currentRemote.host}${currentRemote.port ? `:${currentRemote.port}` : ""}`
+    : "连接未配置";
   return (
     <div className={`app theme-${settings.theme}`}>
       {remoteOpen && (
@@ -1381,8 +1392,14 @@ export default function App() {
         <div className="traffic-space" />
         <div className="brand">
           <Leaf size={18} strokeWidth={1.7} /> grove{" "}
-          <span>{project?.remoteId ? "SSH WORKSPACE" : "LOCAL WORKSPACE"}</span>
         </div>
+        {project && (
+          <ProjectLocation
+            remote={!!project.remoteId}
+            label={project.remoteId ? currentEndpoint : "本机"}
+            detail={`${project.name} · ${project.path}`}
+          />
+        )}
         <button
           className="command-box"
           disabled={!project}
@@ -1450,10 +1467,10 @@ export default function App() {
                 />
               </label>
               <div className="project-list">
-                {visibleProjects.map((p, index) => (
+                {visibleProjects.map((p) => (
                   <div
                     key={p.id}
-                    className={`project-row ${p.id === projectId ? "active" : ""}`}
+                    className={`project-row ${p.remoteId ? "remote-project" : "local-project"} ${p.id === projectId ? "active" : ""}`}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       setProjectMenu(p.id);
@@ -1468,16 +1485,24 @@ export default function App() {
                       }
                       onClick={() => switchProject(p.id)}
                     >
-                      <span className={`project-avatar color-${index % 4}`}>
-                        {p.name.slice(0, 1).toUpperCase()}
+                      <span
+                        className={`project-avatar ${p.remoteId ? "remote-avatar" : "local-avatar"}`}
+                      >
+                        {p.remoteId ? (
+                          <Server size={17} />
+                        ) : (
+                          <Monitor size={17} />
+                        )}
                       </span>
                       <span>
                         <strong>{p.name}</strong>
+                        <ProjectLocation remote={!!p.remoteId} />
                         <small>
                           {p.remoteId
-                            ? `SSH · ${settings.remotes?.find((r) => r.id === p.remoteId)?.name || "远端"} · ${p.path}`
+                            ? `SSH · ${settings.remotes?.find((r) => r.id === p.remoteId)?.name || "连接未配置"} · ${settings.remotes?.find((r) => r.id === p.remoteId)?.host || ""}`
                             : p.path.replace(/^\/Users\/[^/]+/, "~")}
                         </small>
+                        {p.remoteId && <small title={p.path}>{p.path}</small>}
                       </span>
                       {sessions.some(
                         (s) => s.projectId === p.id && !s.exited,
@@ -1543,7 +1568,7 @@ export default function App() {
                   </p>
                 )}
                 <button className="add-project" onClick={() => run(addProject)}>
-                  <Plus size={14} /> 添加项目
+                  <Plus size={14} /> 添加本地项目
                 </button>
                 <button
                   className="add-project"
@@ -1561,7 +1586,18 @@ export default function App() {
                   <span>设置</span>
                 </button>
                 <div className="local-label">
-                  <span className="status-dot" /> 本地工作区
+                  {project ? (
+                    <ProjectLocation
+                      remote={!!project.remoteId}
+                      label={
+                        project.remoteId
+                          ? currentRemote?.name || "连接未配置"
+                          : "本机"
+                      }
+                    />
+                  ) : (
+                    "未选择项目"
+                  )}
                 </div>
                 <button
                   className="theme-switch"
@@ -1977,6 +2013,10 @@ export default function App() {
             <TerminalPane
               sessions={sessions}
               projectId={projectId}
+              remote={!!project?.remoteId}
+              locationLabel={
+                project?.remoteId ? currentEndpoint : project?.name
+              }
               hidden={settings.collapsed[2]}
               theme={settings.theme}
               maximized={settings.terminalMaximized}

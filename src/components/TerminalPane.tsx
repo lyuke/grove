@@ -15,11 +15,15 @@ import {
 } from "lucide-react";
 import { displayShortcut } from "../../shared/shortcuts";
 import type { TerminalSession } from "../../shared/types";
+import ProjectLocation from "./ProjectLocation";
 
 const TerminalSurface = lazy(() => import("./TerminalSurface"));
+
 export default function TerminalPane({
   sessions,
   projectId,
+  remote,
+  locationLabel,
   theme,
   hidden,
   maximized,
@@ -39,6 +43,8 @@ export default function TerminalPane({
 }: {
   sessions: TerminalSession[];
   projectId?: string;
+  remote?: boolean;
+  locationLabel?: string;
   theme: string;
   hidden: boolean;
   maximized: boolean;
@@ -82,6 +88,7 @@ export default function TerminalPane({
         >
           <GripVertical size={14} /> 终端
         </span>
+        {projectId && <ProjectLocation remote={remote} label={locationLabel} />}
         <div className="actions terminal-actions">
           <button
             className="icon-button"
