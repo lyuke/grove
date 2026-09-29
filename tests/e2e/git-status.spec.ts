@@ -56,6 +56,23 @@ test("Git status is available before slow login shell initialization", async () 
     await expect(
       page.getByRole("button", { name: "放弃更改 second.txt", exact: true }),
     ).toBeVisible();
+    const index = path.join(repo, ".git", "index");
+    await fs.writeFile(index, "invalid index");
+    await page.getByRole("button", { name: "刷新 Git", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("当前显示上次结果");
+    await expect(
+      page.getByRole("button", { name: "放弃更改 second.txt", exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Git 变更", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("无法读取 Git 状态");
+    await page.getByRole("button", { name: "重试", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("无法读取 Git 状态");
+    await fs.unlink(index);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "放弃更改 second.txt", exact: true }),
+    ).toBeVisible();
   } finally {
     const exited = new Promise((resolve) =>
       app.process().once("exit", resolve),

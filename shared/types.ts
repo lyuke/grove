@@ -2,6 +2,29 @@ export interface Project {
   id: string;
   name: string;
   path: string;
+  remoteId?: string;
+}
+export interface RemoteConnection {
+  id: string;
+  name: string;
+  host: string;
+  user?: string;
+  port?: number;
+  identityFile?: string;
+  nodePath?: string;
+  configFile?: string;
+  authentication?: "ssh" | "kerberos";
+}
+export interface KerberosStatus {
+  valid: boolean;
+  message: string;
+}
+export interface RemoteInfo {
+  hostname: string;
+  home: string;
+  node: string;
+  git: boolean;
+  search: boolean;
 }
 export interface Workspace {
   tabs: string[];
@@ -10,6 +33,7 @@ export interface Workspace {
 }
 export interface Settings {
   projects: Project[];
+  remotes?: RemoteConnection[];
   activeProject?: string;
   theme: "dark" | "light" | "nord" | "catppuccin";
   widths: number[];
@@ -82,6 +106,12 @@ export interface GroveAPI {
   onOpenFiles(callback: () => void): () => void;
   saveSettings(settings: Partial<Omit<Settings, "projects">>): Promise<void>;
   addProject(): Promise<Project | null>;
+  saveRemote(connection: RemoteConnection): Promise<RemoteConnection>;
+  removeRemote(id: string): Promise<void>;
+  testRemote(id: string): Promise<RemoteInfo>;
+  kerberosStatus(): Promise<KerberosStatus>;
+  addRemoteProject(id: string, path: string): Promise<Project>;
+  relocateRemoteProject(id: string, path: string): Promise<Project>;
   updateProject(id: string, name: string): Promise<Project>;
   relocateProject(id: string): Promise<Project | null>;
   removeProject(id: string): Promise<void>;

@@ -1,0 +1,23 @@
+{
+  "files": 6000,
+  "runs": [
+    {
+      "treeReadyMs": 3104.246,
+      "treeRows": 6000,
+      "gitReadyMs": 9676.056417,
+      "gitRows": 6000
+    },
+    {
+      "treeReadyMs": 779.1864170000008,
+      "treeRows": 6000,
+      "gitReadyMs": 9478.806833,
+      "gitRows": 6000
+    },
+    {
+      "treeReadyMs": 840.2599579999987,
+      "treeRows": 6000,
+      "gitReadyMs": 9871.287625,
+      "gitRows": 6000
+    }
+  ]
+}

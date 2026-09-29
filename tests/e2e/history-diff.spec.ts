@@ -35,6 +35,12 @@ test("history shows committed before/after code rather than working-copy content
   });
   try {
     const page = await app.firstWindow();
+    await page
+      .getByRole("button", { name: "新建终端", exact: true })
+      .first()
+      .click();
+    await expect(page.locator(".terminal-tab").first()).toBeVisible();
+    await page.getByRole("button", { name: "最大化终端", exact: true }).click();
     await page.getByRole("button", { name: "Git 变更", exact: true }).click();
     await page.getByRole("button", { name: "历史提交", exact: true }).click();
     await page
@@ -45,6 +51,7 @@ test("history shows committed before/after code rather than working-copy content
       page.locator('.diff-view[data-diff-ready="true"]'),
     ).toBeVisible({ timeout: 20000 });
     const diff = page.locator(".monaco-diff-editor");
+    await expect(page.locator(".terminal-wrapper")).toBeHidden();
     await expect(diff).toContainText("'before'");
     await expect(diff).toContainText("'after'");
     await expect(diff).not.toContainText("working-copy");

@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import VirtualList from "./VirtualList";
 import {
   ChevronRight,
   ChevronDown,
@@ -51,6 +52,7 @@ const TreeRow = memo(function TreeRow({
       <button
         className="tree-item"
         title={entry.path}
+        aria-expanded={entry.directory ? expanded : undefined}
         onClick={() =>
           entry.directory ? onToggle(entry.path) : onOpen(entry.path)
         }
@@ -90,16 +92,21 @@ const TreeRow = memo(function TreeRow({
     </div>
   );
 });
-function Directory({
-  parent,
-  depth,
-  props,
-}: {
-  parent: string;
+type DirectoryState = {
+  entries: FileEntry[];
+  error?: string;
+  revision: number;
+};
+type TreeItem = {
+  key: string;
   depth: number;
-  props: Props;
-}) {
-  const [entries, setEntries] = useState<FileEntry[]>([]);
+  entry?: FileEntry;
+  message?: string;
+};
+function TreeContents(props: Props) {
+  const [directories, setDirectories] = useState(
+    new Map<string, DirectoryState>(),
+  );
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = useCallback(
     (path: string) =>
@@ -111,45 +118,75 @@ function Directory({
       }),
     [],
   );
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   useEffect(() => {
     let alive = true;
-    window.grove
-      .listFiles(props.project.id, parent)
-      .then((files) => {
-        if (alive) {
-          setEntries(files);
-          setError("");
-        }
-      })
-      .catch((e) => {
-        if (alive) setError(String(e.message || e));
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
+    for (const parent of ["", ...expanded]) {
+      if (directories.get(parent)?.revision === props.revision) continue;
+      window.grove
+        .listFiles(props.project.id, parent)
+        .then((entries) => {
+          if (alive)
+            setDirectories((current) =>
+              new Map(current).set(parent, {
+                entries,
+                revision: props.revision,
+              }),
+            );
+        })
+        .catch((error) => {
+          if (alive)
+            setDirectories((current) =>
+              new Map(current).set(parent, {
+                entries: [],
+                error: String(error.message || error),
+                revision: props.revision,
+              }),
+            );
+        });
+    }
     return () => {
       alive = false;
     };
-  }, [props.project.id, props.project.path, props.revision, parent]);
-  if (error)
+  }, [props.project.id, props.revision, expanded]);
+  const rows = useMemo(() => {
+    const result: TreeItem[] = [];
+    const visit = (parent: string, depth: number) => {
+      const directory = directories.get(parent);
+      if (!directory || directory.error || !directory.entries.length) {
+        result.push({
+          key: `placeholder:${parent}`,
+          depth,
+          message: !directory ? "加载中…" : directory.error || "空目录",
+        });
+        return;
+      }
+      for (const entry of directory.entries) {
+        result.push({ key: `entry:${entry.path}`, depth, entry });
+        if (entry.directory && expanded.has(entry.path))
+          visit(entry.path, depth + 1);
+      }
+    };
+    visit("", 0);
+    return result;
+  }, [directories, expanded]);
+  if (directories.get("")?.error)
     return (
       <div className="tree-error">
         <p>无法读取目录</p>
-        <small>{error}</small>
-        {!parent && (
-          <button className="secondary-button" onClick={props.onRelocate}>
-            重新定位项目
-          </button>
-        )}
+        <small>{directories.get("")!.error}</small>
+        <button className="secondary-button" onClick={props.onRelocate}>
+          重新定位项目
+        </button>
       </div>
     );
-  if (loading) return <div className="tree-placeholder">加载中…</div>;
   return (
-    <>
-      {entries.map((entry) => (
-        <div key={entry.path}>
+    <VirtualList
+      className="tree-scroll"
+      items={rows}
+      rowHeight={28}
+      itemKey={(row) => row.key}
+      render={({ entry, depth, message }) =>
+        entry ? (
           <TreeRow
             entry={entry}
             depth={depth}
@@ -159,20 +196,22 @@ function Directory({
             onOpen={props.onOpen}
             onAction={props.onAction}
           />
-          {entry.directory && expanded.has(entry.path) && (
-            <Directory parent={entry.path} depth={depth + 1} props={props} />
-          )}
-        </div>
-      ))}
-      {!entries.length && (
-        <div
-          className="tree-placeholder"
-          style={{ paddingLeft: 26 + depth * 14 }}
-        >
-          空目录
-        </div>
-      )}
-    </>
+        ) : (
+          <div
+            className="tree-placeholder truncate"
+            title={message}
+            style={{
+              paddingLeft: 26 + depth * 14,
+              height: 28,
+              paddingTop: 6,
+              paddingBottom: 6,
+            }}
+          >
+            {message}
+          </div>
+        )
+      }
+    />
   );
 }
 function FileTree(props: Props) {
@@ -205,14 +244,11 @@ function FileTree(props: Props) {
           </button>
         </div>
       </div>
-      <div className="tree-scroll">
-        <Directory
-          key={props.project.id}
-          parent=""
-          depth={0}
-          props={{ ...props, revision: props.revision + extraRevision }}
-        />
-      </div>
+      <TreeContents
+        key={`${props.project.id}:${props.project.path}`}
+        {...props}
+        revision={props.revision + extraRevision}
+      />
     </>
   );
 }

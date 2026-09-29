@@ -1,15 +1,15 @@
 # Grove
 
-一个面向 macOS 的轻量代码编辑器。集中管理本地项目，在同一个窗口里编辑文件、运行 Agent CLI、查看 Git Diff 并提交。
+一个面向 macOS 的轻量代码编辑器。集中管理本地和 SSH 远端项目，在同一个窗口里编辑文件、运行 Agent CLI、查看 Git Diff 并提交。
 
 ![Grove 工作区](artifacts/workspace-dark.png)
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.8) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.8/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.9) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.9/`。
 
-- Apple Silicon：`Grove-0.1.8-arm64.dmg`
-- Intel：`Grove-0.1.8-x64.dmg`
+- Apple Silicon：`Grove-0.1.9-arm64.dmg`
+- Intel：`Grove-0.1.9-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -17,9 +17,23 @@
 
 点击「添加项目」选择本地目录，然后在文件树打开文件。底部「新建终端」会在该项目目录启动登录 Shell，可以运行 `codex`、`claude` 或其他已安装的 CLI。
 
-Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你的仓库设置；需要交互认证或签名时可以在终端执行提交。搜索程序 ripgrep 已随安装包附带。
+本地项目的 Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你的仓库设置；需要交互认证或签名时可以在终端执行提交。本地搜索程序 ripgrep 已随安装包附带，远端依赖见下文。
 
-本版构建与测试详情见 [VERIFY-0.1.8.md](VERIFY-0.1.8.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
+本版构建与测试详情见 [VERIFY-0.1.9.md](VERIFY-0.1.9.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
+
+## 远端项目
+
+在项目栏或设置中打开「远端连接」，填写 SSH 主机或 `~/.ssh/config` 中的别名，保存并测试连接，然后输入远端项目绝对路径或 `~/project`。同一连接可添加多个项目，与本地项目一起管理。
+
+- 支持 Linux / macOS 远端；需安装 Node.js 18+。Git 功能使用远端 Git，全文与文件名搜索需要远端 `rg`。如果非交互 SSH 环境找不到 Node.js，可填写其绝对路径；Git 和 rg 需位于该环境的 PATH 中。
+- 复用本机密钥、ssh-agent 和 SSH 配置（包括跳板机）；可指定端口、用户名、私钥路径和独立 SSH 配置文件。首次使用前，请在系统终端连接并核对主机指纹；加密密钥通过 ssh-agent 解锁。目前不支持密码登录。
+- Kerberos / Devbox：认证方式选择「Kerberos / Devbox」，开启 GSSAPI 并关闭公钥、密码及键盘交互认证，文件连接和终端共用配置。先连接所需网络/VPN，在系统终端使用 `/usr/bin/kinit 账号@REALM` 获取票据（Devbox 使用 SSO 账号及 `BYTEDANCE.COM` 域）；可在 Grove 点击「检查 Kerberos 票据」。票据过期后重新运行 kinit，再测试连接。使用系统 `/usr/bin/kinit`、`/usr/bin/klist`，避免 Conda 工具干扰。Grove 不收集 Kerberos 密码，也不复制或保存票据内容。
+- 若跳板机也使用 Kerberos，请在本机 SSH 配置对应的 `Host` 段设置 `GSSAPIAuthentication yes`；跳板机认证沿用该配置。
+- 文件浏览、创建、移动、编辑、保存冲突检测、Git 状态、Diff、暂存、提交、放弃更改与历史记录均在远端执行。远端项目的新终端通过 SSH 在对应目录启动登录 Shell，支持调整大小和切换项目保留会话。
+- 已浏览目录和已打开文件约每 3 秒检查外部变化；断线请求会报错，下次操作重新连接。写入不会自动重放，遇到超时应先刷新确认。终端断线后需新建会话。
+- 远端删除经确认后移到 `~/.grove-trash/<编号>/item`；同目录的 `origin.json` 记录原路径，可用远端终端恢复。移除项目只移除列表记录；修改或删除正在使用的连接前需先移除关联项目。
+
+连接通过 SSH 启动临时 Node.js 进程，不安装常驻服务，不保存密码或私钥内容。已使用本机隔离 SSH 服务验证完整流程；Kerberos 已验证系统 SSH 生效配置、无有效票据提示和失败不回退密钥，尚未在实际 KDC / Devbox 或外部 Linux 主机实测。
 
 ## 第一版能力
 
@@ -81,8 +95,8 @@ npm run package        # 生成 arm64 和 x64 DMG
 验证打包后的应用：
 
 ```sh
-GROVE_EXECUTABLE="$PWD/release/0.1.8/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
-GROVE_EXECUTABLE="$PWD/release/0.1.8/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.9/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.9/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
 ```
 
 在 Apple Silicon 上运行 x64 版本需要 Rosetta；转译测试不能代替 Intel 实机测试。
@@ -137,7 +151,7 @@ Git 面板「历史提交」按每页 50 条读取当前分支、当前项目目
 设置页和历史组件按需加载；编辑器只注册当前支持的语言，空项目工作区不预加载编辑器。
 打包时前端依赖由 Vite 产物提供，主进程依赖由 esbuild 打包，仅额外携带 PTY 运行时及原生组件。
 
-0.1.8 发布说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。构建后可运行 `node scripts/verify-package.mjs` 检查双架构组件、语言资源和开发文件裁剪结果。
+0.1.9 发布说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。构建后可运行 `node scripts/verify-package.mjs` 检查双架构组件、语言资源和开发文件裁剪结果。
 
 ## 新建文件与 Finder 打开
 

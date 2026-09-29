@@ -1,4 +1,64 @@
 @import url("./tokens.css");
+.remote-fields {
+  border: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 16px 0;
+}
+.remote-fields label,
+.remote-project-path {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.remote-fields input,
+.remote-fields select,
+.remote-project-path input {
+  width: 100%;
+  padding: 8px;
+}
+.remote-fields select {
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.remote-authentication {
+  grid-column: 1 / -1;
+}
+.remote-kerberos code {
+  display: block;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.remote-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.remote-dialog .settings-body form {
+  display: block;
+}
+.remote-dialog .remote-actions .secondary-button {
+  margin-top: 0;
+}
+.remote-dialog .remote-fields input {
+  width: 100%;
+  min-width: 0;
+}
+.remote-project-path {
+  margin-bottom: 12px;
+}
+.remote-dialog {
+  max-height: 90vh;
+}
+.remote-dialog section {
+  overflow: auto;
+}
 * {
   box-sizing: border-box;
 }
@@ -1018,6 +1078,11 @@ code {
 }
 .git-scroll {
   overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.git-scroll .git-row {
+  height: 42px;
 }
 .section-label {
   display: flex;

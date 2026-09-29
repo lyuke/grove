@@ -8,10 +8,22 @@ import type * as pty from "node-pty";
 import chokidar, { type FSWatcher } from "chokidar";
 import * as service from "./services";
 import {
+  RemoteClient,
+  sshArgs,
+  remoteTerminalCommand,
+  validateRemote,
+  kerberosStatus,
+} from "./remote";
+import {
   normalizeTerminalShortcut,
   shortcutFromKey,
 } from "../shared/shortcuts";
-import type { GitStatus, Settings, TerminalSession } from "../shared/types";
+import type {
+  GitStatus,
+  Settings,
+  TerminalSession,
+  RemoteConnection,
+} from "../shared/types";
 
 if (process.env.GROVE_USER_DATA)
   app.setPath("userData", process.env.GROVE_USER_DATA);
@@ -34,6 +46,41 @@ let shellEnvironment: Promise<void> = Promise.resolve();
 let pendingQuit:
   { id: string; timer: ReturnType<typeof setTimeout> } | undefined;
 const watchers = new Map<string, FSWatcher>();
+const remoteClients = new Map<string, RemoteClient>();
+function remoteConnection(id: string) {
+  const connection = settings.remotes?.find((item) => item.id === id);
+  if (!connection) throw new Error("远端连接配置不存在");
+  return connection;
+}
+function remoteClient(id: string) {
+  let client = remoteClients.get(id);
+  if (!client) {
+    client = new RemoteClient(remoteConnection(id), undefined, (event) => {
+      for (const p of settings.projects.filter(
+        (p) => p.remoteId === id && p.path === event.root,
+      )) {
+        gitSnapshots.delete(p.id);
+        send("fileChange", {
+          projectId: p.id,
+          path: event.path,
+          type: event.type,
+        });
+      }
+    });
+    remoteClients.set(id, client);
+  }
+  return client;
+}
+function projectCall<T = any>(
+  id: string,
+  method: string,
+  ...args: unknown[]
+): Promise<T> {
+  const p = project(id);
+  if (p.remoteId)
+    return remoteClient(p.remoteId).call<T>(method, p.path, ...args);
+  return (service as any)[method](p.path, ...args);
+}
 const terminals = new Map<
   string,
   { info: TerminalSession; process: pty.IPty; buffer: string }
@@ -93,7 +140,7 @@ function readGitStatus(id: string, refresh = false): Promise<GitStatus> {
   const entry = {
     pending: true,
     time: Date.now(),
-    value: service.gitStatus(root),
+    value: projectCall<GitStatus>(id, "gitStatus"),
   };
   gitStatusRequests.set(requestKey, entry.value);
   gitSnapshots.set(id, entry);
@@ -111,6 +158,7 @@ function readGitStatus(id: string, refresh = false): Promise<GitStatus> {
   return entry.value;
 }
 function watch(id: string) {
+  if (project(id).remoteId) return;
   if (watchers.has(id)) return;
   const root = project(id).path;
   const watcher = chokidar.watch(root, {
@@ -160,7 +208,8 @@ function setupIPC() {
             let item = settings.projects
               .filter(
                 (p) =>
-                  target === p.path || target.startsWith(p.path + path.sep),
+                  !p.remoteId &&
+                  (target === p.path || target.startsWith(p.path + path.sep)),
               )
               .sort((a, b) => b.path.length - a.path.length)[0];
             if (!item) {
@@ -244,7 +293,9 @@ function setupIPC() {
     addProject: async () => {
       const root = await chooseDirectory();
       if (!root) return null;
-      const existing = settings.projects.find((p) => p.path === root);
+      const existing = settings.projects.find(
+        (p) => !p.remoteId && p.path === root,
+      );
       if (existing) return existing;
       const item = { id: randomUUID(), name: path.basename(root), path: root };
       settings.projects.push(item);
@@ -252,6 +303,84 @@ function setupIPC() {
       await persist();
       watch(item.id);
       return item;
+    },
+    saveRemote: async (value: RemoteConnection) => {
+      const connection = validateRemote(value);
+      const existing =
+        connection.id && settings.remotes?.find((r) => r.id === connection.id);
+      if (connection.id && !existing) throw new Error("连接配置不存在");
+      if (existing && settings.projects.some((p) => p.remoteId === existing.id))
+        throw new Error(
+          "此连接已被项目使用。请先移除相关项目，再修改连接，或创建新连接",
+        );
+      connection.id = existing ? existing.id : randomUUID();
+      settings.remotes = [
+        ...(settings.remotes || []).filter((r) => r.id !== connection.id),
+        connection,
+      ];
+      remoteClients.get(connection.id)?.close();
+      remoteClients.delete(connection.id);
+      await persist();
+      return connection;
+    },
+    removeRemote: async (id) => {
+      remoteConnection(id);
+      if (settings.projects.some((p) => p.remoteId === id))
+        throw new Error("请先移除此连接下的项目");
+      remoteClients.get(id)?.close();
+      remoteClients.delete(id);
+      settings.remotes = settings.remotes?.filter((r) => r.id !== id);
+      await persist();
+    },
+    testRemote: (id) => remoteClient(id).call("info", ""),
+    kerberosStatus: () => kerberosStatus(),
+    addRemoteProject: async (id, value) => {
+      if (typeof value !== "string" || !value.trim() || value.includes("\0"))
+        throw new Error("请输入远端项目路径");
+      const root = await remoteClient(id).call<string>("resolve", value.trim());
+      return locked("remote-projects", async () => {
+        const existing = settings.projects.find(
+          (p) => p.remoteId === id && p.path === root,
+        );
+        if (existing) return existing;
+        const item = {
+          id: randomUUID(),
+          name: path.posix.basename(root) || root,
+          path: root,
+          remoteId: id,
+        };
+        settings.projects.push(item);
+        settings.activeProject = item.id;
+        await persist();
+        return item;
+      });
+    },
+    relocateRemoteProject: async (id, value) => {
+      const p = project(id);
+      if (!p.remoteId) throw new Error("请选择远端项目");
+      if (
+        [...terminals.values()].some(
+          (t) => t.info.projectId === id && !t.info.exited,
+        )
+      )
+        throw new Error("请先关闭此项目的终端");
+      const root = await remoteClient(p.remoteId).call<string>(
+        "resolve",
+        value,
+      );
+      if (
+        settings.projects.some(
+          (other) =>
+            other.id !== id &&
+            other.remoteId === p.remoteId &&
+            other.path === root,
+        )
+      )
+        throw new Error("此目录已添加");
+      p.path = root;
+      gitSnapshots.delete(id);
+      await persist();
+      return p;
     },
     updateProject: async (id, name) => {
       if (typeof name !== "string" || !name.trim())
@@ -263,6 +392,7 @@ function setupIPC() {
     },
     relocateProject: async (id) => {
       const p = project(id);
+      if (p.remoteId) throw new Error("请使用远端路径重新定位");
       if (
         [...terminals.values()].some(
           (t) => t.info.projectId === id && !t.info.exited,
@@ -273,7 +403,7 @@ function setupIPC() {
       if (!root) return null;
       if (
         settings.projects.some(
-          (other) => other.id !== id && other.path === root,
+          (other) => other.id !== id && !other.remoteId && other.path === root,
         )
       )
         throw new Error("此目录已添加");
@@ -286,7 +416,7 @@ function setupIPC() {
       return p;
     },
     removeProject: async (id) => {
-      project(id);
+      const removed = project(id);
       if (
         [...terminals.values()].some(
           (t) => t.info.projectId === id && !t.info.exited,
@@ -297,6 +427,13 @@ function setupIPC() {
       watchers.delete(id);
       gitSnapshots.delete(id);
       settings.projects = settings.projects.filter((p) => p.id !== id);
+      if (
+        removed.remoteId &&
+        !settings.projects.some((p) => p.remoteId === removed.remoteId)
+      ) {
+        remoteClients.get(removed.remoteId)?.close();
+        remoteClients.delete(removed.remoteId);
+      }
       delete settings.workspaces[id];
       if (settings.activeProject === id)
         settings.activeProject = settings.projects[0]?.id;
@@ -314,22 +451,39 @@ function setupIPC() {
     },
     listFiles: (id, relative) => {
       watch(id);
-      return service.listFiles(project(id).path, relative);
+      return projectCall(id, "listFiles", relative);
     },
-    readFile: (id, relative) => service.readFile(project(id).path, relative),
+    readFile: (id, relative) => projectCall(id, "readFile", relative),
     writeFile: (id, relative, content, hash) =>
       locked(`file:${id}:${relative}`, () =>
-        service.writeFile(project(id).path, relative, content, hash),
+        projectCall(id, "writeFile", relative, content, hash),
       ),
     createFile: (id, relative, directory) =>
-      service.createFile(project(id).path, relative, directory),
-    moveFile: (id, from, to) => service.moveFile(project(id).path, from, to),
+      projectCall(id, "createFile", relative, directory),
+    moveFile: (id, from, to) => projectCall(id, "moveFile", from, to),
     revealInFinder: async (id, relative) => {
+      if (project(id).remoteId)
+        throw new Error("远端文件不能在本机 Finder 中显示");
       const target = await service.safePath(project(id).path, relative, true);
       await fs.access(target);
       shell.showItemInFolder(target);
     },
     trashFile: async (id, relative) => {
+      if (project(id).remoteId) {
+        const result = await dialog.showMessageBox(win, {
+          type: "warning",
+          message: `将远端「${relative}」移到回收目录？`,
+          detail: "文件将保存在远端 ~/.grove-trash，可手动恢复。",
+          buttons: ["取消", "移到远端回收目录"],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        if (result.response !== 1) return false;
+        await projectCall(id, "trashFile", relative);
+        gitSnapshots.delete(id);
+        send("fileChange", { projectId: id, path: relative, type: "unlink" });
+        return true;
+      }
       const root = project(id).path;
       await service.safePath(root, relative);
       const target = path.join(
@@ -349,35 +503,35 @@ function setupIPC() {
       return true;
     },
     search: (id, query, filenames) =>
-      service.search(
-        project(id).path,
-        query,
-        filenames,
-        app.isPackaged
-          ? path.join(process.resourcesPath, "bin", "rg")
-          : path.join(__dirname, `../resources/${process.arch}/rg`),
-      ),
-    gitHistory: (id, skip) => service.gitHistory(project(id).path, skip),
-    gitCommitFiles: (id, hash) =>
-      service.gitCommitFiles(project(id).path, hash),
+      project(id).remoteId
+        ? projectCall(id, "search", query, filenames)
+        : service.search(
+            project(id).path,
+            query,
+            filenames,
+            app.isPackaged
+              ? path.join(process.resourcesPath, "bin", "rg")
+              : path.join(__dirname, `../resources/${process.arch}/rg`),
+          ),
+    gitHistory: (id, skip) => projectCall(id, "gitHistory", skip),
+    gitCommitFiles: (id, hash) => projectCall(id, "gitCommitFiles", hash),
     gitCommitDiff: (id, hash, relative) =>
-      service.gitCommitDiff(project(id).path, hash, relative),
-    gitCommitDetail: (id, hash) =>
-      service.gitCommitDetail(project(id).path, hash),
+      projectCall(id, "gitCommitDiff", hash, relative),
+    gitCommitDetail: (id, hash) => projectCall(id, "gitCommitDetail", hash),
     gitStatus: (id) => readGitStatus(id, true),
     gitDiff: async (id, relative, staged) => {
       const change = (await readGitStatus(id)).changes.find(
         (c) => c.path === relative,
       );
       if (!change) throw new Error("此文件没有 Git 变更，请刷新");
-      return service.gitDiff(project(id).path, relative, staged, change);
+      return projectCall(id, "gitDiff", relative, staged, change);
     },
     gitDiscard: (id, relative) =>
       locked(`git:${id}`, () =>
         locked(`file:${id}:${relative}`, async () => {
           await shellEnvironment;
           try {
-            await service.gitDiscard(project(id).path, relative);
+            await projectCall(id, "gitDiscard", relative);
           } finally {
             gitSnapshots.delete(id);
           }
@@ -387,7 +541,7 @@ function setupIPC() {
       locked(`git:${id}`, async () => {
         await shellEnvironment;
         try {
-          return await service.gitStage(project(id).path, relative, stage);
+          return await projectCall(id, "gitStage", relative, stage);
         } finally {
           gitSnapshots.delete(id);
         }
@@ -395,6 +549,13 @@ function setupIPC() {
     gitCommit: (id, message) =>
       locked(`git:${id}`, async () => {
         await shellEnvironment;
+        if (project(id).remoteId) {
+          try {
+            return await projectCall(id, "gitCommit", message);
+          } finally {
+            gitSnapshots.delete(id);
+          }
+        }
         if (typeof message !== "string" || !message.trim())
           throw new Error("请填写提交信息");
         const root = project(id).path;
@@ -434,7 +595,8 @@ function setupIPC() {
     terminalCreate: async (id) => {
       await shellEnvironment;
       const p = project(id);
-      await fs.access(p.path);
+      if (p.remoteId) await remoteClient(p.remoteId).call("resolve", p.path);
+      else await fs.access(p.path);
       const shellPath = process.env.SHELL || "/bin/zsh";
       const processEnv = Object.fromEntries(
         Object.entries(process.env).filter(
@@ -443,17 +605,30 @@ function setupIPC() {
       );
       delete processEnv.ELECTRON_RUN_AS_NODE;
       const { spawn } = await import("node-pty");
-      const child = spawn(shellPath, ["-l"], {
-        name: "xterm-256color",
-        cols: 80,
-        rows: 24,
-        cwd: p.path,
-        env: { ...processEnv, TERM: "xterm-256color", COLORTERM: "truecolor" },
-      });
+      const child = spawn(
+        p.remoteId ? "/usr/bin/ssh" : shellPath,
+        p.remoteId
+          ? [
+              ...sshArgs(remoteConnection(p.remoteId), true),
+              remoteTerminalCommand(p.path),
+            ]
+          : ["-l"],
+        {
+          name: "xterm-256color",
+          cols: 80,
+          rows: 24,
+          cwd: p.remoteId ? app.getPath("home") : p.path,
+          env: {
+            ...processEnv,
+            TERM: "xterm-256color",
+            COLORTERM: "truecolor",
+          },
+        },
+      );
       const info: TerminalSession = {
         id: randomUUID(),
         projectId: id,
-        title: `Shell ${[...terminals.values()].filter((t) => t.info.projectId === id).length + 1}`,
+        title: `${p.remoteId ? "SSH" : "Shell"} ${[...terminals.values()].filter((t) => t.info.projectId === id).length + 1}`,
       };
       const entry = { info, process: child, buffer: "" };
       terminals.set(info.id, entry);
@@ -763,6 +938,7 @@ app.whenReady().then(async () => {
 });
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
+  for (const client of remoteClients.values()) client.close();
   for (const t of terminals.values()) if (!t.info.exited) t.process.kill();
   for (const w of watchers.values()) void w.close();
 });

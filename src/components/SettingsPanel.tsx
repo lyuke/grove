@@ -6,10 +6,12 @@ export default function SettingsPanel({
   settings,
   onChange,
   onClose,
+  onRemoteSettings,
 }: {
   settings: Settings;
   onChange(patch: Partial<Settings>): void;
   onClose(): void;
+  onRemoteSettings(): void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [section, setSection] = useState("外观");
@@ -57,6 +59,7 @@ export default function SettingsPanel({
       </header>
       <div className="settings-body">
         <nav aria-label="设置分类">
+          <button onClick={onRemoteSettings}>远端连接</button>
           {(
             [
               ["外观", Palette],

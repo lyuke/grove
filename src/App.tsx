@@ -51,6 +51,7 @@ import TerminalPane from "./components/TerminalPane";
 
 const loadEditor = () => import("./components/Editor");
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
+const RemotePanel = lazy(() => import("./components/RemotePanel"));
 const Editor = lazy(loadEditor);
 const DiffView = lazy(() =>
   loadEditor().then((m) => ({ default: m.DiffView })),
@@ -200,6 +201,7 @@ function Dialog({
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [remoteOpen, setRemoteOpen] = useState(false);
   useEffect(() => {
     const open = (event: KeyboardEvent) => {
       if (event.metaKey && event.code === "Comma") {
@@ -218,6 +220,8 @@ export default function App() {
   const [panel, setPanel] = useState<"files" | "search" | "git">("files");
   const [revision, setRevision] = useState(0);
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
+  const [gitError, setGitError] = useState("");
+  const [gitLoading, setGitLoading] = useState(false);
   const gitStatusCache = useRef(new Map<string, GitStatus>());
   const [gitRefresh, setGitRefresh] = useState(0);
   const [gitBusy, setGitBusy] = useState(false);
@@ -502,14 +506,22 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     let treeTimer: ReturnType<typeof setTimeout> | undefined;
+    let treeDirty = false;
     const refreshes = new Map<string, number>();
     const off = api.onFileChange((event) => {
       if (event.projectId === latest.current.settings?.activeProject) {
+        if (
+          event.type !== "change" &&
+          event.path !== ".git" &&
+          !event.path.startsWith(".git/")
+        )
+          treeDirty = true;
         // Throttle bursts so continuous output cannot postpone refresh forever.
         if (!treeTimer)
           treeTimer = setTimeout(() => {
             treeTimer = undefined;
-            setRevision((v) => v + 1);
+            if (treeDirty) setRevision((v) => v + 1);
+            treeDirty = false;
             setGitRefresh((v) => v + 1);
           }, 250);
       } else {
@@ -571,9 +583,13 @@ export default function App() {
   useEffect(() => {
     if (!projectId) {
       setGitStatus(null);
+      setGitLoading(false);
+      setGitError("");
       return;
     }
     let alive = true;
+    setGitLoading(true);
+    setGitError("");
     api
       .gitStatus(projectId)
       .then((status) => {
@@ -581,7 +597,10 @@ export default function App() {
         if (alive) setGitStatus(status);
       })
       .catch((error) => {
-        if (alive) onError(error);
+        if (alive) setGitError(String(error.message || error));
+      })
+      .finally(() => {
+        if (alive) setGitLoading(false);
       });
     return () => {
       alive = false;
@@ -720,6 +739,11 @@ export default function App() {
         ),
       );
     setActiveKeys((current) => ({ ...current, [targetProject]: key }));
+    revealEditor();
+    setDiff(null);
+    setQuickOpen(false);
+  }
+  function revealEditor() {
     setSettings((current) =>
       current?.terminalMaximized && !current.collapsed[2]
         ? {
@@ -729,8 +753,6 @@ export default function App() {
           }
         : current,
     );
-    setDiff(null);
-    setQuickOpen(false);
   }
   async function saveAll() {
     if (saving.current.size) throw new Error("文件正在保存，请完成后重试");
@@ -848,9 +870,15 @@ export default function App() {
               { label: "在此新建文件夹", value: "folder" },
             ]
           : []),
-        { label: "在 Finder 中显示", value: "reveal" },
+        ...(!project?.remoteId
+          ? [{ label: "在 Finder 中显示", value: "reveal" }]
+          : []),
         { label: "重命名 / 移动", value: "move" },
-        { label: "移到废纸篓", value: "delete", danger: true },
+        {
+          label: project?.remoteId ? "移到远端回收目录" : "移到废纸篓",
+          value: "delete",
+          danger: true,
+        },
       ],
     });
     if (choice === "reveal") return api.revealInFinder(id, entry.path);
@@ -936,7 +964,17 @@ export default function App() {
     } else if (action === "relocate") {
       if (docs.some((d) => d.projectId === p.id && d.content !== d.base))
         throw new Error("请先保存或关闭此项目未保存的文件");
-      const updated = await api.relocateProject(p.id);
+      const remotePath = p.remoteId
+        ? await ask({
+            title: "重新定位远端项目",
+            description: "输入此主机上的绝对路径或 ~/ 开头的路径",
+            value: p.path,
+          })
+        : undefined;
+      if (p.remoteId && !remotePath) return;
+      const updated = p.remoteId
+        ? await api.relocateRemoteProject(p.id, remotePath!)
+        : await api.relocateProject(p.id);
       if (!updated) return;
       setDocs((current) => current.filter((d) => d.projectId !== p.id));
       setSettings(
@@ -984,6 +1022,7 @@ export default function App() {
   }
   const showHistoryDiff = useEvent((commit: string, file: string) => {
     if (!projectId) return;
+    revealEditor();
     void loadEditor().catch(onError);
     setCompareExternal(false);
     setDiff({
@@ -1003,6 +1042,7 @@ export default function App() {
     }
     const id = projectId!;
     void loadEditor().catch(onError);
+    revealEditor();
     setDiff({
       projectId: id,
       path: change.path,
@@ -1301,10 +1341,37 @@ export default function App() {
   );
   return (
     <div className={`app theme-${settings.theme}`}>
+      {remoteOpen && (
+        <Suspense fallback={null}>
+          <RemotePanel
+            connections={settings.remotes || []}
+            onConnections={(remotes) =>
+              setSettings((s) => s && { ...s, remotes })
+            }
+            onProject={(added) =>
+              setSettings(
+                (s) =>
+                  s && {
+                    ...s,
+                    projects: s.projects.some((p) => p.id === added.id)
+                      ? s.projects
+                      : [...s.projects, added],
+                    activeProject: added.id,
+                  },
+              )
+            }
+            onClose={() => setRemoteOpen(false)}
+          />
+        </Suspense>
+      )}
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsPanel
             settings={settings}
+            onRemoteSettings={() => {
+              setSettingsOpen(false);
+              setRemoteOpen(true);
+            }}
             onClose={() => setSettingsOpen(false)}
             onChange={(patch) => setSettings((s) => s && { ...s, ...patch })}
           />
@@ -1314,7 +1381,7 @@ export default function App() {
         <div className="traffic-space" />
         <div className="brand">
           <Leaf size={18} strokeWidth={1.7} /> grove{" "}
-          <span>LOCAL WORKSPACE</span>
+          <span>{project?.remoteId ? "SSH WORKSPACE" : "LOCAL WORKSPACE"}</span>
         </div>
         <button
           className="command-box"
@@ -1394,7 +1461,11 @@ export default function App() {
                   >
                     <button
                       className="project-select"
-                      title={p.path}
+                      title={
+                        p.remoteId
+                          ? `${settings.remotes?.find((r) => r.id === p.remoteId)?.host}:${p.path}`
+                          : p.path
+                      }
                       onClick={() => switchProject(p.id)}
                     >
                       <span className={`project-avatar color-${index % 4}`}>
@@ -1402,7 +1473,11 @@ export default function App() {
                       </span>
                       <span>
                         <strong>{p.name}</strong>
-                        <small>{p.path.replace(/^\/Users\/[^/]+/, "~")}</small>
+                        <small>
+                          {p.remoteId
+                            ? `SSH · ${settings.remotes?.find((r) => r.id === p.remoteId)?.name || "远端"} · ${p.path}`
+                            : p.path.replace(/^\/Users\/[^/]+/, "~")}
+                        </small>
                       </span>
                       {sessions.some(
                         (s) => s.projectId === p.id && !s.exited,
@@ -1419,11 +1494,15 @@ export default function App() {
                     </button>
                     {projectMenu === p.id && (
                       <div className="project-popover">
-                        <button
-                          onClick={() => run(() => projectAction(p, "reveal"))}
-                        >
-                          在 Finder 中显示
-                        </button>
+                        {!p.remoteId && (
+                          <button
+                            onClick={() =>
+                              run(() => projectAction(p, "reveal"))
+                            }
+                          >
+                            在 Finder 中显示
+                          </button>
+                        )}
                         <button
                           onClick={() => run(() => projectAction(p, "rename"))}
                         >
@@ -1465,6 +1544,12 @@ export default function App() {
                 )}
                 <button className="add-project" onClick={() => run(addProject)}>
                   <Plus size={14} /> 添加项目
+                </button>
+                <button
+                  className="add-project"
+                  onClick={() => setRemoteOpen(true)}
+                >
+                  <Plus size={14} /> 远端连接
                 </button>
               </div>
               <div className="project-bottom">
@@ -1569,6 +1654,8 @@ export default function App() {
                     projectId={projectId!}
                     revision={gitRefresh}
                     status={gitStatus}
+                    error={gitError}
+                    loading={gitLoading}
                     message={messages[project.id] || ""}
                     setMessage={gitSetMessage}
                     onDiff={gitShowDiff}

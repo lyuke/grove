@@ -43,6 +43,21 @@ test("discard confirms, preserves staged content and refreshes the open editor",
     await page.getByRole("button", { name: "hello.txt", exact: true }).click();
     await expect(page.locator(".view-lines")).toContainText("unstaged");
     await page.getByRole("button", { name: "Git 变更", exact: true }).click();
+    await page
+      .getByRole("button", { name: "新建终端", exact: true })
+      .first()
+      .click();
+    await page.getByRole("button", { name: "最大化终端", exact: true }).click();
+    await page
+      .locator(".git-file")
+      .filter({ hasText: "hello.txt" })
+      .last()
+      .click();
+    await expect(
+      page.locator('.diff-view[data-diff-ready="true"]'),
+    ).toBeVisible();
+    await expect(page.locator(".terminal-wrapper")).toBeHidden();
+    await page.getByRole("button", { name: "关闭 Diff", exact: true }).click();
     const discard = page.getByRole("button", {
       name: "放弃更改 hello.txt",
       exact: true,
