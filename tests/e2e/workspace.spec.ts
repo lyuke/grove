@@ -248,10 +248,16 @@ test("project CRUD, file creation and rename, terminal isolation, and workspace 
       filePaths: [directory],
     })) as typeof dialog.showOpenDialog;
   }, second);
-  await page.getByRole("button", { name: "添加本地项目", exact: true }).click();
+  await page
+    .locator(".add-project")
+    .filter({ hasText: "添加本地项目" })
+    .click();
   await expect(page.locator(".project-row")).toHaveCount(2);
   await expect(page.locator(".terminal-empty")).toBeVisible();
-  await page.getByRole("button", { name: "添加本地项目", exact: true }).click();
+  await page
+    .locator(".add-project")
+    .filter({ hasText: "添加本地项目" })
+    .click();
   await expect(page.locator(".project-row")).toHaveCount(2);
   await page
     .getByRole("button", { name: "another-project 项目设置", exact: true })

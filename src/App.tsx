@@ -1476,6 +1476,7 @@ export default function App() {
                   >
                     <button
                       className="project-select"
+                      aria-current={p.id === projectId ? "true" : undefined}
                       title={
                         p.remoteId
                           ? `${settings.remotes?.find((r) => r.id === p.remoteId)?.name || "远端"} · ${settings.remotes?.find((r) => r.id === p.remoteId)?.host || "连接未配置"}:${p.path}`
@@ -1485,8 +1486,8 @@ export default function App() {
                     >
                       <span className="project-summary">
                         <span className="project-name-line">
-                          <strong>{p.name}</strong>
                           <ProjectLocation remote={!!p.remoteId} />
+                          <strong>{p.name}</strong>
                         </span>
                         <small>
                           {p.remoteId
@@ -1496,10 +1497,18 @@ export default function App() {
                       </span>
                       {sessions.some(
                         (s) => s.projectId === p.id && !s.exited,
-                      ) && <span className="status-dot" />}
+                      ) && (
+                        <span
+                          className="status-dot project-terminal-status"
+                          role="img"
+                          aria-label="有运行中的终端"
+                          title="有运行中的终端"
+                        />
+                      )}
                     </button>
                     <button
                       className="project-more"
+                      aria-expanded={projectMenu === p.id}
                       title={`${p.name} 项目设置`}
                       onClick={() =>
                         setProjectMenu(projectMenu === p.id ? null : p.id)

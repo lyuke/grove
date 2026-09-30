@@ -275,10 +275,16 @@ code {
   padding: 0 10px;
   color: var(--muted);
   height: 31px;
-  margin: 0 10px 12px;
+  margin: 0 12px 10px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 7px;
   background: var(--input);
+}
+.project-filter:focus-within {
+  border-color: var(--accent);
+}
+.project-filter svg {
+  flex-shrink: 0;
 }
 .project-filter input {
   width: 100%;
@@ -290,26 +296,46 @@ code {
 .project-list {
   flex: 1;
   overflow: auto;
-  padding: 0 8px;
+  padding: 2px 8px 12px;
+  scrollbar-gutter: stable;
 }
 .project-row {
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: 6px;
-  margin-bottom: 5px;
+  border-radius: 8px;
+  margin-bottom: 4px;
   border: 1px solid transparent;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.project-row:hover {
+  background: var(--hover);
+}
+.project-row:focus-within {
+  border-color: var(--selected-border);
 }
 .project-row.active {
   background: var(--selected);
   border-color: var(--selected-border);
+}
+.project-row.active::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
 }
 .project-select {
   display: flex;
   gap: 9px;
   align-items: center;
   text-align: left;
-  padding: 10px 7px;
+  padding: 11px 0 11px 10px;
   flex: 1;
   min-width: 0;
 }
@@ -320,7 +346,8 @@ code {
 .project-name-line {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  min-width: 0;
 }
 .project-name-line strong {
   flex: 1;
@@ -337,19 +364,34 @@ code {
 .project-select small {
   display: block;
   color: var(--muted);
-  font-size: 9px;
-  margin-top: 4px;
+  font-size: 10px;
+  margin-top: 5px;
+  line-height: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 .project-more {
-  width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 28px;
+  margin: 0 5px 0 4px;
+  border-radius: 5px;
   flex-shrink: 0;
   padding: 0;
   color: var(--muted);
   opacity: 0;
+}
+.project-more:hover,
+.project-more[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.project-terminal-status {
+  margin-left: 2px;
 }
 .project-location {
   display: inline-flex;
@@ -384,8 +426,12 @@ code {
 }
 .project-select .project-location {
   flex-shrink: 0;
-  padding: 0 3px;
-  font-size: 9px;
+  padding: 0 4px;
+  font-size: 8px;
+  line-height: 15px;
+  border-color: transparent;
+  background: var(--hover);
+  color: var(--muted);
 }
 .titlebar > .project-location {
   -webkit-app-region: no-drag;
@@ -402,7 +448,9 @@ code {
   max-width: 100%;
 }
 .project-row:hover .project-more,
-.project-row.active .project-more {
+.project-row.active .project-more,
+.project-row:focus-within .project-more,
+.project-more[aria-expanded="true"] {
   opacity: 1;
 }
 .project-popover {
