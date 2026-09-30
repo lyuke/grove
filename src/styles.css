@@ -313,9 +313,18 @@ code {
   flex: 1;
   min-width: 0;
 }
-.project-select > span:nth-child(2) {
+.project-summary {
   min-width: 0;
   flex: 1;
+}
+.project-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.project-name-line strong {
+  flex: 1;
+  min-width: 0;
 }
 .project-select strong {
   font-size: 12px;
@@ -334,31 +343,6 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-}
-.project-avatar {
-  width: 27px;
-  height: 29px;
-  border-radius: 5px;
-  background: #334533;
-  color: #bad29e;
-  font-family: Georgia, serif;
-  font-size: 17px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.color-1 {
-  background: #383c4a;
-  color: #b7bbd3;
-}
-.color-2 {
-  background: #483d30;
-  color: #d8bc93;
-}
-.color-3 {
-  background: #364546;
-  color: #a4cece;
 }
 .project-more {
   width: 20px;
@@ -399,20 +383,9 @@ code {
   text-overflow: ellipsis;
 }
 .project-select .project-location {
-  margin-top: 5px;
-  padding: 0 4px;
+  flex-shrink: 0;
+  padding: 0 3px;
   font-size: 9px;
-}
-.project-row.remote-project {
-  border-left: 3px solid var(--warning);
-}
-.project-avatar.remote-avatar {
-  color: var(--warning);
-  background: var(--warning-bg);
-}
-.project-avatar.local-avatar {
-  color: var(--secondary);
-  background: var(--raised);
 }
 .titlebar > .project-location {
   -webkit-app-region: no-drag;

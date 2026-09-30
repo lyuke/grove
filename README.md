@@ -6,10 +6,10 @@
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.10) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.10/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.11) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.11/`。
 
-- Apple Silicon：`Grove-0.1.10-arm64.dmg`
-- Intel：`Grove-0.1.10-x64.dmg`
+- Apple Silicon：`Grove-0.1.11-arm64.dmg`
+- Intel：`Grove-0.1.11-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -19,7 +19,7 @@
 
 本地项目的 Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你的仓库设置；需要交互认证或签名时可以在终端执行提交。本地搜索程序 ripgrep 已随安装包附带，远端依赖见下文。
 
-本版构建与测试详情见 [VERIFY-0.1.10.md](VERIFY-0.1.10.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
+本版构建与测试详情见 [VERIFY-0.1.11.md](VERIFY-0.1.11.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 ## 远端项目
 
@@ -95,8 +95,8 @@ npm run package        # 生成 arm64 和 x64 DMG
 验证打包后的应用：
 
 ```sh
-GROVE_EXECUTABLE="$PWD/release/0.1.10/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
-GROVE_EXECUTABLE="$PWD/release/0.1.10/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.11/mac-arm64/Grove.app/Contents/MacOS/Grove" npm run test:packaged
+GROVE_EXECUTABLE="$PWD/release/0.1.11/mac/Grove.app/Contents/MacOS/Grove" npm run test:packaged
 ```
 
 在 Apple Silicon 上运行 x64 版本需要 Rosetta；转译测试不能代替 Intel 实机测试。
@@ -151,7 +151,7 @@ Git 面板「历史提交」按每页 50 条读取当前分支、当前项目目
 设置页和历史组件按需加载；编辑器只注册当前支持的语言，空项目工作区不预加载编辑器。
 打包时前端依赖由 Vite 产物提供，主进程依赖由 esbuild 打包，仅额外携带 PTY 运行时及原生组件。
 
-0.1.10 发布说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。构建后可运行 `node scripts/verify-package.mjs` 检查双架构组件、语言资源和开发文件裁剪结果。
+0.1.11 发布说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。构建后可运行 `node scripts/verify-package.mjs` 检查双架构组件、语言资源和开发文件裁剪结果。
 
 ## 新建文件与 Finder 打开
 

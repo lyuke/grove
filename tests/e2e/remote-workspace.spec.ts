@@ -92,9 +92,9 @@ test("SSH configuration opens a remote project with files, Git and a real termin
     await page
       .getByRole("button", { name: "打开远端项目", exact: true })
       .click();
-    await expect(page.locator(".remote-project .project-select")).toContainText(
-      "SSH · 测试 SSH",
-    );
+    await expect(
+      page.locator(".remote-project .project-select"),
+    ).toHaveAttribute("title", `测试 SSH · grove-test:${repo}`);
     const projectId = (
       await page.evaluate(() => window.grove.settings())
     ).projects.find((p) => p.remoteId)!.id;
@@ -196,9 +196,9 @@ test("SSH configuration opens a remote project with files, Git and a real termin
       { timeout: 10000 },
     );
     await page.reload();
-    await expect(page.locator(".remote-project .project-select")).toContainText(
-      "SSH · 测试 SSH",
-    );
+    await expect(
+      page.locator(".remote-project .project-select"),
+    ).toHaveAttribute("title", `测试 SSH · grove-test:${repo}`);
     await expect(page.locator(".view-lines")).toContainText(
       "external remote edit",
     );

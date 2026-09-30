@@ -28,8 +28,6 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
-  Monitor,
-  Server,
 } from "lucide-react";
 import type {
   Change,
@@ -1480,29 +1478,21 @@ export default function App() {
                       className="project-select"
                       title={
                         p.remoteId
-                          ? `${settings.remotes?.find((r) => r.id === p.remoteId)?.host}:${p.path}`
+                          ? `${settings.remotes?.find((r) => r.id === p.remoteId)?.name || "远端"} · ${settings.remotes?.find((r) => r.id === p.remoteId)?.host || "连接未配置"}:${p.path}`
                           : p.path
                       }
                       onClick={() => switchProject(p.id)}
                     >
-                      <span
-                        className={`project-avatar ${p.remoteId ? "remote-avatar" : "local-avatar"}`}
-                      >
-                        {p.remoteId ? (
-                          <Server size={17} />
-                        ) : (
-                          <Monitor size={17} />
-                        )}
-                      </span>
-                      <span>
-                        <strong>{p.name}</strong>
-                        <ProjectLocation remote={!!p.remoteId} />
+                      <span className="project-summary">
+                        <span className="project-name-line">
+                          <strong>{p.name}</strong>
+                          <ProjectLocation remote={!!p.remoteId} />
+                        </span>
                         <small>
                           {p.remoteId
-                            ? `SSH · ${settings.remotes?.find((r) => r.id === p.remoteId)?.name || "连接未配置"} · ${settings.remotes?.find((r) => r.id === p.remoteId)?.host || ""}`
+                            ? p.path
                             : p.path.replace(/^\/Users\/[^/]+/, "~")}
                         </small>
-                        {p.remoteId && <small title={p.path}>{p.path}</small>}
                       </span>
                       {sessions.some(
                         (s) => s.projectId === p.id && !s.exited,
