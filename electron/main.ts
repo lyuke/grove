@@ -1,4 +1,18 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  shell,
+  Notification,
+} from "electron";
+import { TaskManager } from "./tasks";
+import {
+  defaultAgents,
+  validateAgents,
+  validatePalette,
+} from "../shared/preferences";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -40,6 +54,8 @@ app.on("open-file", (event, file) => {
   }
 });
 let settings: Settings = service.defaults();
+let tasks: TaskManager;
+let taskLoadError: unknown;
 let dirty = false;
 let quitting = false;
 let shellEnvironment: Promise<void> = Promise.resolve();
@@ -196,6 +212,26 @@ function terminal(id: string) {
 function setupIPC() {
   const handlers: Record<string, (...args: any[]) => any> = {
     settings: () => settings,
+    tasks: () => {
+      if (taskLoadError) throw taskLoadError;
+      return tasks.list();
+    },
+    createTask: (input) =>
+      locked("create-task", async () => {
+        if (taskLoadError) throw taskLoadError;
+        await shellEnvironment;
+        const target = project(input.projectId);
+        const agent = (settings.agents || defaultAgents).find(
+          (item) => item.id === input.agentId,
+        );
+        if (!agent) throw new Error("请选择有效的 Agent");
+        return tasks.create(
+          input,
+          target,
+          agent,
+          target.remoteId ? remoteConnection(target.remoteId) : undefined,
+        );
+      }),
     takeOpenFiles: () =>
       locked("open-files", async () => {
         const requests = pendingOpenFiles.splice(0);
@@ -234,6 +270,12 @@ function setupIPC() {
         return results;
       }),
     saveSettings: async (value: Partial<Settings>) => {
+      const palette =
+        value.palette === undefined
+          ? undefined
+          : validatePalette(value.palette);
+      const agents =
+        value.agents === undefined ? undefined : validateAgents(value.agents);
       const shortcut =
         value.terminalShortcut === undefined
           ? settings.terminalShortcut
@@ -287,6 +329,14 @@ function setupIPC() {
         );
       if (value.workspaces && typeof value.workspaces === "object")
         settings.workspaces = value.workspaces;
+      if (palette) settings.palette = palette;
+      if (agents) settings.agents = agents;
+      for (const key of [
+        "tasksVisible",
+        "taskSound",
+        "taskNotifications",
+      ] as const)
+        if (typeof value[key] === "boolean") settings[key] = value[key];
       await persist();
       if (shortcutChanged) configureMenu();
     },
@@ -932,12 +982,41 @@ app.whenReady().then(async () => {
     ];
     settings.activeProject = "test-project";
   }
+  tasks = new TaskManager(
+    path.join(app.getPath("userData"), "tasks.json"),
+    (task) => send("taskChange", task),
+    (task) => {
+      if (settings.taskSound !== false) shell.beep();
+      if (settings.taskNotifications !== false && Notification.isSupported()) {
+        const notification = new Notification({
+          title: task.status === "succeeded" ? "任务执行完成" : "任务执行失败",
+          body: `${task.title} · ${task.agentName} · ${task.projectName}`,
+          silent: true,
+        });
+        notification.on("click", () => {
+          if (win && !win.isDestroyed()) {
+            if (win.isMinimized()) win.restore();
+            win.show();
+            win.focus();
+            send("menu", "tasks");
+          }
+        });
+        notification.show();
+      }
+    },
+  );
+  try {
+    await tasks.load();
+  } catch (error) {
+    taskLoadError = error;
+  }
   setupIPC();
   configureMenu();
   await createWindow();
 });
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
+  tasks?.close();
   for (const client of remoteClients.values()) client.close();
   for (const t of terminals.values()) if (!t.info.exited) t.process.kill();
   for (const w of watchers.values()) void w.close();

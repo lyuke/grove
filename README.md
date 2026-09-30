@@ -6,10 +6,10 @@
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.12) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.12/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.13) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.13/`。
 
-- Apple Silicon：`Grove-0.1.12-arm64.dmg`
-- Intel：`Grove-0.1.12-x64.dmg`
+- Apple Silicon：`Grove-0.1.13-arm64.dmg`
+- Intel：`Grove-0.1.13-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -19,7 +19,7 @@
 
 本地项目的 Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你的仓库设置；需要交互认证或签名时可以在终端执行提交。本地搜索程序 ripgrep 已随安装包附带，远端依赖见下文。
 
-本版构建与测试详情见 [VERIFY-0.1.12.md](VERIFY-0.1.12.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
+本版构建与测试详情见 [VERIFY-0.1.13.md](VERIFY-0.1.13.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 ## 远端项目
 
@@ -36,6 +36,31 @@
 连接通过 SSH 启动临时 Node.js 进程，不安装常驻服务，不保存密码或私钥内容。已使用本机隔离 SSH 服务验证完整流程；已发布的 arm64 安装包还在一台实际 Linux Devbox 上通过 Kerberos 认证、目录浏览和交互终端验证。文件写入和 Git 变更操作的验证仍使用隔离测试环境。
 
 ## 第一版能力
+
+### 侧边栏配色与任务
+
+项目栏通过绿色本地标识、琥珀色远端标识和行侧色条区分执行环境，保留文字标签。设置 → 外观支持导入、导出 JSON 配色和恢复默认色。示例：
+
+```json
+{
+  "version": 1,
+  "theme": "dark",
+  "colors": {
+    "local": "#9dceaa",
+    "remote": "#e2b76d",
+    "projects": "#1b251f",
+    "accent": "#bbdd9d"
+  }
+}
+```
+
+`theme` 支持 `dark`、`light`、`nord`、`catppuccin`；`colors` 支持 `shared/preferences.ts` 中列出的界面颜色，格式为 `#RRGGBB` 或 `#RRGGBBAA`。未指定项沿用基础主题；每次导入替换自定义颜色。编辑器语法配色和终端 ANSI 配色仍使用基础主题。
+
+任务列点击「创建任务」，填写标题、描述并选择项目和 Agent，点击「分配并执行」。本地项目启动本机进程，远端项目复用 SSH 配置在远端目录执行。任务列可以通过标题栏按钮收起，拖动右下角调整宽度。状态和最近 100,000 字符输出保存在本机 `tasks.json`，最多同时执行 8 个任务。退出码 0 表示进程正常完成，其他退出码或启动错误表示失败，实际修改仍需检查验收。
+
+设置 → 任务与 Agent 可编辑命令配置，默认提供 Codex 与 Claude Code；`executable` 是目标机器上的程序名或绝对路径，`args` 是参数数组，必须包含 `{prompt}`。参数以字面值传递，不进行 Shell 展开。CLI 需要在目标机器预先安装、登录，配置适合非交互执行的权限；远端程序不在登录 Shell 的 PATH 中时请指定绝对路径。
+
+完成和失败都会触发声音与系统通知，可分别关闭。通知显示依赖 macOS 对 Grove 的通知授权，点击通知会打开任务列。应用关闭时会结束本机执行进程；SSH 断开不保证远端及其派生进程已终止。重新启动会将未完成记录标记为中断，不自动重试，需检查远端执行情况后再创建任务。
 
 - 项目添加、查找、排序、修改显示名称、重新定位和移除。
 - 可折叠、调整宽度的项目栏和文件侧栏；终端支持下方/右侧停靠、拖动边缘调整大小、最大化及还原。

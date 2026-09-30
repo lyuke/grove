@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { X, Palette, PanelsTopLeft, Keyboard } from "lucide-react";
 import type { Settings } from "../../shared/types";
 import { normalizeTerminalShortcut } from "../../shared/shortcuts";
+import {
+  defaultAgents,
+  parsePalette,
+  validateAgents,
+} from "../../shared/preferences";
 export default function SettingsPanel({
   settings,
   onChange,
@@ -17,6 +22,10 @@ export default function SettingsPanel({
   const [section, setSection] = useState("外观");
   const [shortcut, setShortcut] = useState(settings.terminalShortcut);
   const [error, setError] = useState("");
+  const [agentConfig, setAgentConfig] = useState(() =>
+    JSON.stringify(settings.agents || defaultAgents, null, 2),
+  );
+  const [configMessage, setConfigMessage] = useState("");
   useEffect(() => {
     dialog.current?.showModal();
   }, []);
@@ -65,6 +74,7 @@ export default function SettingsPanel({
               ["外观", Palette],
               ["布局", PanelsTopLeft],
               ["快捷键", Keyboard],
+              ["任务与 Agent", PanelsTopLeft],
             ] as const
           ).map(([name, Icon]) => (
             <button
@@ -106,6 +116,131 @@ export default function SettingsPanel({
               <p className="theme-attribution">
                 开源配色：Nord、Catppuccin（MIT），按 Grove 界面适配。
               </p>
+              <h3>导入与管理配色</h3>
+              <p>
+                JSON 配置可覆盖界面颜色；local / remote
+                控制本地与远端标识。编辑器语法色和终端 ANSI 色跟随基础主题。
+              </p>
+              <label className="setting-row">
+                导入配色 JSON
+                <input
+                  aria-label="导入配色 JSON"
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file) return;
+                    try {
+                      if (file.size > 64000)
+                        throw new Error("配色文件不能超过 64 KB");
+                      onChange(parsePalette(await file.text()));
+                      setConfigMessage(`已导入 ${file.name}`);
+                    } catch (failure) {
+                      setConfigMessage(String(failure));
+                    }
+                  }}
+                />
+              </label>
+              <div className="task-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    const content = JSON.stringify(
+                      {
+                        version: 1,
+                        theme: settings.theme,
+                        colors: {
+                          local:
+                            settings.theme === "light" ? "#31734e" : "#9dceaa",
+                          remote:
+                            settings.theme === "light" ? "#96651e" : "#e2b76d",
+                          ...settings.palette,
+                        },
+                      },
+                      null,
+                      2,
+                    );
+                    const url = URL.createObjectURL(
+                      new Blob([content], { type: "application/json" }),
+                    );
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "grove-palette.json";
+                    link.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  }}
+                >
+                  导出当前配色
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    onChange({ palette: {} });
+                    setConfigMessage("已恢复主题默认配色");
+                  }}
+                >
+                  重置自定义颜色
+                </button>
+              </div>
+              {configMessage && <p role="status">{configMessage}</p>}
+            </>
+          )}
+          {section === "任务与 Agent" && (
+            <>
+              <h3>任务执行与提醒</h3>
+              <p>
+                Agent 命令在所选项目所在机器执行。args 中的 {"{prompt}"}{" "}
+                会替换为任务描述，参数不会作为 Shell 脚本解析。
+              </p>
+              {(
+                [
+                  ["tasksVisible", "显示任务列"],
+                  ["taskSound", "执行结束后播放声音"],
+                  ["taskNotifications", "执行结束后发送系统通知"],
+                ] as const
+              ).map(([key, label]) => (
+                <label className="setting-row" key={key}>
+                  {label}
+                  <input
+                    type="checkbox"
+                    checked={settings[key] !== false}
+                    onChange={(event) =>
+                      onChange({ [key]: event.target.checked })
+                    }
+                  />
+                </label>
+              ))}
+              <p>
+                系统通知需要在 macOS 通知设置中允许
+                Grove；关闭应用后任务不会自动恢复执行。
+              </p>
+              <label className="agent-config">
+                Agent 配置（JSON）
+                <textarea
+                  aria-label="Agent 配置（JSON）"
+                  rows={12}
+                  spellCheck={false}
+                  value={agentConfig}
+                  onChange={(event) => setAgentConfig(event.target.value)}
+                />
+              </label>
+              <button
+                className="primary-button"
+                onClick={() => {
+                  try {
+                    onChange({
+                      agents: validateAgents(JSON.parse(agentConfig)),
+                    });
+                    setConfigMessage("Agent 配置已应用");
+                  } catch (failure) {
+                    setConfigMessage(String(failure));
+                  }
+                }}
+              >
+                应用 Agent 配置
+              </button>
+              {configMessage && <p role="status">{configMessage}</p>}
             </>
           )}
           {section === "布局" && (

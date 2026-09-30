@@ -1,5 +1,7 @@
 :root,
 .theme-dark {
+  --local: #9dceaa;
+  --remote: #e2b76d;
   --title: #18211c;
   --projects: #1b251f;
   --explorer: #162019;
@@ -27,6 +29,8 @@
   --scrollbar: #42524766;
 }
 .theme-light {
+  --local: #31734e;
+  --remote: #96651e;
   --title: #edf2e9;
   --projects: #e8eee3;
   --explorer: #f1f5ed;

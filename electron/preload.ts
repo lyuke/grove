@@ -10,6 +10,9 @@ const on = (name: string) => (callback: (value: any) => void) => {
   return () => ipcRenderer.removeListener(`grove:${name}`, listener);
 };
 const api: GroveAPI = {
+  tasks: invoke("tasks"),
+  createTask: invoke("createTask"),
+  onTaskChange: on("taskChange"),
   settings: invoke("settings"),
   takeOpenFiles: invoke("takeOpenFiles"),
   onOpenFiles: on("openFiles"),

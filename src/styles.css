@@ -1,4 +1,5 @@
 @import url("./tokens.css");
+@import url("./tasks.css");
 .remote-fields {
   border: 0;
   padding: 0;
@@ -300,6 +301,7 @@ code {
   scrollbar-gutter: stable;
 }
 .project-row {
+  --location-color: var(--local);
   position: relative;
   display: flex;
   align-items: center;
@@ -328,7 +330,19 @@ code {
   bottom: 14px;
   width: 3px;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--location-color);
+}
+.project-row.remote-project {
+  --location-color: var(--remote);
+}
+.project-row.local-project,
+.project-row.remote-project {
+  border-left: 3px solid var(--location-color);
+  background: color-mix(in srgb, var(--location-color) 6%, var(--projects));
+}
+.project-row:hover,
+.project-row.active {
+  background: color-mix(in srgb, var(--location-color) 14%, var(--projects));
 }
 .project-select {
   display: flex;
@@ -416,9 +430,16 @@ code {
   font-weight: 600;
 }
 .project-location.is-remote {
-  color: var(--warning);
-  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
-  background: var(--warning-bg);
+  --location-color: var(--remote);
+}
+.project-location.is-local {
+  --location-color: var(--local);
+}
+.project-location.is-remote,
+.project-location.is-local {
+  color: var(--location-color);
+  border-color: color-mix(in srgb, var(--location-color) 45%, transparent);
+  background: color-mix(in srgb, var(--location-color) 10%, var(--raised));
 }
 .location-detail {
   overflow: hidden;
@@ -430,8 +451,8 @@ code {
   font-size: 8px;
   line-height: 15px;
   border-color: transparent;
-  background: var(--hover);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--location-color) 10%, var(--raised));
+  color: var(--location-color);
 }
 .titlebar > .project-location {
   -webkit-app-region: no-drag;

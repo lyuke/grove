@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 import {
   ArrowDown,
@@ -28,6 +29,7 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
+  ListTodo,
 } from "lucide-react";
 import type {
   Change,
@@ -49,6 +51,7 @@ import GitPanel from "./components/GitPanel";
 import SearchPanel from "./components/SearchPanel";
 import TerminalPane from "./components/TerminalPane";
 import ProjectLocation from "./components/ProjectLocation";
+import TaskPanel from "./components/TaskPanel";
 
 const loadEditor = () => import("./components/Editor");
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
@@ -462,6 +465,11 @@ export default function App() {
     return api.saveSettings({
       activeProject: state.settings!.activeProject,
       theme: state.settings!.theme,
+      palette: state.settings!.palette,
+      agents: state.settings!.agents,
+      tasksVisible: state.settings!.tasksVisible,
+      taskSound: state.settings!.taskSound,
+      taskNotifications: state.settings!.taskNotifications,
       widths: state.settings!.widths,
       collapsed: state.settings!.collapsed,
       terminalDock: state.settings!.terminalDock,
@@ -1202,6 +1210,8 @@ export default function App() {
       );
     },
     sidebar: () => togglePanel(1),
+    tasks: () =>
+      setSettings((current) => current && { ...current, tasksVisible: true }),
     terminal: () => run(openTerminalShortcut),
     "new-terminal": () => run(newTerminal),
   };
@@ -1349,7 +1359,17 @@ export default function App() {
     ? `${currentRemote.user ? `${currentRemote.user}@` : ""}${currentRemote.host}${currentRemote.port ? `:${currentRemote.port}` : ""}`
     : "连接未配置";
   return (
-    <div className={`app theme-${settings.theme}`}>
+    <div
+      className={`app theme-${settings.theme}`}
+      style={
+        Object.fromEntries(
+          Object.entries(settings.palette || {}).map(([key, color]) => [
+            `--${key}`,
+            color,
+          ]),
+        ) as CSSProperties
+      }
+    >
       {remoteOpen && (
         <Suspense fallback={null}>
           <RemotePanel
@@ -1412,6 +1432,22 @@ export default function App() {
           <kbd>⌘ P</kbd>
         </button>
         <div className="titlebar-actions">
+          <button
+            className="icon-button"
+            title="切换任务列"
+            aria-pressed={settings.tasksVisible !== false}
+            onClick={() =>
+              setSettings(
+                (current) =>
+                  current && {
+                    ...current,
+                    tasksVisible: current.tasksVisible === false,
+                  },
+              )
+            }
+          >
+            <ListTodo size={15} />
+          </button>
           <button
             className={`icon-button ${settings.collapsed[0] ? "muted" : ""}`}
             title="切换项目列表"
@@ -1721,6 +1757,14 @@ export default function App() {
             />
           </>
         )}
+        <TaskPanel
+          settings={settings}
+          onClose={() =>
+            setSettings(
+              (current) => current && { ...current, tasksVisible: false },
+            )
+          }
+        />
         <div className={`editor-stack dock-${settings.terminalDock}`}>
           <section
             className="editor-pane"

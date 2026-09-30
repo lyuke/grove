@@ -32,6 +32,11 @@ export interface Workspace {
   positions?: Record<string, { lineNumber: number; column: number }>;
 }
 export interface Settings {
+  palette?: Record<string, string>;
+  agents?: AgentProfile[];
+  tasksVisible?: boolean;
+  taskSound?: boolean;
+  taskNotifications?: boolean;
   projects: Project[];
   remotes?: RemoteConnection[];
   activeProject?: string;
@@ -96,6 +101,14 @@ export interface TerminalSession {
   exited?: boolean;
 }
 export interface GroveAPI {
+  tasks(): Promise<AgentTask[]>;
+  createTask(input: {
+    title: string;
+    prompt: string;
+    projectId: string;
+    agentId: string;
+  }): Promise<AgentTask>;
+  onTaskChange(callback: (task: AgentTask) => void): () => void;
   settings(): Promise<Settings>;
   takeOpenFiles(): Promise<
     Array<
@@ -168,6 +181,27 @@ export interface GroveAPI {
     callback: (event: { id: string; exitCode: number }) => void,
   ): () => void;
   onMenu(callback: (action: string) => void): () => void;
+}
+export interface AgentProfile {
+  id: string;
+  name: string;
+  executable: string;
+  args: string[];
+}
+export interface AgentTask {
+  id: string;
+  title: string;
+  prompt: string;
+  projectId: string;
+  projectName: string;
+  target: string;
+  remote: boolean;
+  agentName: string;
+  status: "running" | "succeeded" | "failed" | "interrupted";
+  output: string;
+  createdAt: string;
+  finishedAt?: string;
+  exitCode?: number;
 }
 declare global {
   interface Window {
