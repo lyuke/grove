@@ -220,6 +220,10 @@ export default function App() {
   const [docs, setDocs] = useState<OpenDocument[]>([]);
   const [activeKeys, setActiveKeys] = useState<Record<string, string>>({});
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
+  const [terminalSelection, setTerminalSelection] = useState<{
+    id: string;
+    request: number;
+  }>();
   const [projectFilter, setProjectFilter] = useState("");
   const [panel, setPanel] = useState<"files" | "search" | "git">("files");
   const [revision, setRevision] = useState(0);
@@ -577,6 +581,12 @@ export default function App() {
           });
       });
     });
+    const created = api.onTerminalCreated((session) =>
+      setSessions((current) => [
+        ...current.filter((item) => item.id !== session.id),
+        session,
+      ]),
+    );
     const exit = api.onTerminalExit((event) =>
       setSessions((current) =>
         current.map((s) => (s.id === event.id ? { ...s, exited: true } : s)),
@@ -584,6 +594,7 @@ export default function App() {
     );
     return () => {
       off();
+      created();
       exit();
       clearTimeout(treeTimer);
     };
@@ -1759,6 +1770,31 @@ export default function App() {
         )}
         <TaskPanel
           settings={settings}
+          onOpenTerminal={async (task) => {
+            if (!task.terminalId) return;
+            const available = await api.terminalList();
+            const session = available.find(
+              (item) => item.id === task.terminalId,
+            );
+            if (!session || session.exited) throw new Error("任务终端已关闭");
+            if (!settings.projects.some((item) => item.id === task.projectId))
+              throw new Error("任务项目已移除");
+            setSessions(available);
+            setSettings(
+              (current) =>
+                current && {
+                  ...current,
+                  activeProject: task.projectId,
+                  collapsed: [
+                    current.collapsed[0],
+                    current.collapsed[1],
+                    false,
+                  ],
+                },
+            );
+            setTerminalSelection({ id: session.id, request: Date.now() });
+            setTerminalFocus((value) => value + 1);
+          }}
           onClose={() =>
             setSettings(
               (current) => current && { ...current, tasksVisible: false },
@@ -2055,6 +2091,7 @@ export default function App() {
           >
             <TerminalPane
               sessions={sessions}
+              selectionRequest={terminalSelection}
               projectId={projectId}
               remote={!!project?.remoteId}
               locationLabel={

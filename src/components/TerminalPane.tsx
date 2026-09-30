@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Plus,
   Minus,
@@ -21,6 +21,7 @@ const TerminalSurface = lazy(() => import("./TerminalSurface"));
 
 export default function TerminalPane({
   sessions,
+  selectionRequest,
   projectId,
   remote,
   locationLabel,
@@ -42,6 +43,7 @@ export default function TerminalPane({
   onError,
 }: {
   sessions: TerminalSession[];
+  selectionRequest?: { id: string; request: number };
   projectId?: string;
   remote?: boolean;
   locationLabel?: string;
@@ -64,6 +66,22 @@ export default function TerminalPane({
 }) {
   const [scrollRequest, setScrollRequest] = useState(0);
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const appliedRequest = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      !selectionRequest ||
+      appliedRequest.current === selectionRequest.request
+    )
+      return;
+    const session = sessions.find((item) => item.id === selectionRequest?.id);
+    if (session) {
+      appliedRequest.current = selectionRequest.request;
+      setSelected((current) => ({
+        ...current,
+        [session.projectId]: session.id,
+      }));
+    }
+  }, [selectionRequest, sessions]);
   const local = sessions.filter((s) => s.projectId === projectId);
   const active =
     local.find((s) => s.id === selected[projectId || ""])?.id ||

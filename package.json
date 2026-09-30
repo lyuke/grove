@@ -1,6 +1,6 @@
 {
   "name": "grove",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "A quiet workspace for your code, projects and agents",
   "private": true,
   "main": "dist-electron/main.cjs",
@@ -53,7 +53,7 @@
     "appId": "app.grove.editor",
     "productName": "Grove",
     "directories": {
-      "output": "release/0.1.13"
+      "output": "release/0.1.14"
     },
     "files": [
       "dist/**/*",

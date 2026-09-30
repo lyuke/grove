@@ -10,6 +10,50 @@
   background: var(--explorer);
   border-right: 1px solid var(--border);
 }
+.agent-manager {
+  margin-top: 24px;
+}
+.agent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agent-list button {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.agent-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 18px 0;
+}
+.agent-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.agent-fields p {
+  margin: 0;
+}
+.agent-argument {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-argument textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 8px;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: monospace;
+}
 .tasks-pane[hidden] {
   display: none;
 }

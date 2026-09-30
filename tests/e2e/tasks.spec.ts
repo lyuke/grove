@@ -87,17 +87,16 @@ test("palette import, agent assignment, completion alerts and persisted task his
     await page
       .getByRole("button", { name: "任务与 Agent", exact: true })
       .click();
-    await page.getByLabel("Agent 配置（JSON）").fill(
-      JSON.stringify([
-        {
-          id: "test",
-          name: "测试 Agent",
-          executable: "/usr/bin/printf",
-          args: ["%s", "{prompt}"],
-        },
-      ]),
-    );
-    await page.getByRole("button", { name: "应用 Agent 配置" }).click();
+    await page.getByRole("button", { name: "添加 Agent", exact: true }).click();
+    await page.getByLabel("Agent 名称", { exact: true }).fill("测试 Agent");
+    await page
+      .getByLabel("可执行程序", { exact: true })
+      .fill("/usr/bin/printf");
+    await page.getByLabel("参数 1", { exact: true }).fill("%s");
+    await page.getByRole("button", { name: "添加参数", exact: true }).click();
+    await page.getByLabel("参数 2", { exact: true }).fill("{prompt}");
+    await page.getByRole("button", { name: "保存 Agent 配置" }).click();
+    await expect(page.getByRole("status")).toContainText("Agent 配置已保存");
     await page.getByRole("button", { name: "关闭设置" }).click();
     await page.getByRole("button", { name: "创建任务", exact: true }).click();
     await page.getByLabel("任务标题", { exact: true }).fill("验证任务闭环");
@@ -106,7 +105,9 @@ test("palette import, agent assignment, completion alerts and persisted task his
       "localhost:/work/project",
     );
     await page.getByLabel("执行项目", { exact: true }).selectOption("local");
-    await page.getByLabel("执行 Agent", { exact: true }).selectOption("test");
+    await page
+      .getByLabel("执行 Agent", { exact: true })
+      .selectOption({ label: "测试 Agent" });
     await page
       .getByLabel("任务描述", { exact: true })
       .fill("任务输出：中文与 'literal' $(safe)");
@@ -124,6 +125,51 @@ test("palette import, agent assignment, completion alerts and persisted task his
           app.evaluate(() => (globalThis as any).taskAlerts.notifications),
         )
         .toBe(1);
+    const task = await page.evaluate(
+      async () => (await window.grove.tasks())[0],
+    );
+    expect(task.terminalId).toBeTruthy();
+    await expect(page.locator(".terminal-tab.active")).toContainText(
+      "测试 Agent",
+    );
+    await expect(page.locator(".terminal-wrapper")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (id) => window.grove.terminalAttach(id),
+          task.terminalId!,
+        ),
+      )
+      .toContain("任务输出：中文与 'literal' $(safe)");
+    await page.getByLabel("追加 Prompt", { exact: true }).fill("FOLLOWUP_OK");
+    await page.getByRole("button", { name: "继续执行", exact: true }).click();
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as any).taskAlerts.sounds))
+      .toBe(2);
+    await expect(page.getByLabel("任务输出", { exact: true })).toContainText(
+      "FOLLOWUP_OK",
+    );
+    expect(
+      (await page.evaluate(() => window.grove.tasks()))[0].terminalId,
+    ).toBe(task.terminalId);
+    await page
+      .getByRole("button", { name: "进入任务终端", exact: true })
+      .click();
+    await page.evaluate(
+      (id) => window.grove.terminalWrite(id, "printf 'MANUAL_%s\\n' READY\r"),
+      task.terminalId!,
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (id) => window.grove.terminalAttach(id),
+          task.terminalId!,
+        ),
+      )
+      .toContain("MANUAL_READY");
+    expect(
+      await app.evaluate(() => (globalThis as any).taskAlerts.sounds),
+    ).toBe(2);
     await page.screenshot({ path: "artifacts/tasks-sidebar.png" });
     await page.getByRole("button", { name: "收起任务列" }).click();
     await expect(
@@ -146,6 +192,13 @@ test("palette import, agent assignment, completion alerts and persisted task his
     );
     expect(saved[0].status).toBe("succeeded");
   } finally {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBoxSync = () => 1;
+      dialog.showMessageBox = async () => ({
+        response: 1,
+        checkboxChecked: false,
+      });
+    });
     await app.close();
     await fs.rm(root, {
       recursive: true,

@@ -2,11 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { X, Palette, PanelsTopLeft, Keyboard } from "lucide-react";
 import type { Settings } from "../../shared/types";
 import { normalizeTerminalShortcut } from "../../shared/shortcuts";
-import {
-  defaultAgents,
-  parsePalette,
-  validateAgents,
-} from "../../shared/preferences";
+import { parsePalette } from "../../shared/preferences";
+import AgentManager from "./AgentManager";
 export default function SettingsPanel({
   settings,
   onChange,
@@ -22,9 +19,6 @@ export default function SettingsPanel({
   const [section, setSection] = useState("外观");
   const [shortcut, setShortcut] = useState(settings.terminalShortcut);
   const [error, setError] = useState("");
-  const [agentConfig, setAgentConfig] = useState(() =>
-    JSON.stringify(settings.agents || defaultAgents, null, 2),
-  );
   const [configMessage, setConfigMessage] = useState("");
   useEffect(() => {
     dialog.current?.showModal();
@@ -190,8 +184,8 @@ export default function SettingsPanel({
             <>
               <h3>任务执行与提醒</h3>
               <p>
-                Agent 命令在所选项目所在机器执行。args 中的 {"{prompt}"}{" "}
-                会替换为任务描述，参数不会作为 Shell 脚本解析。
+                每个任务使用独立终端，可查看 Agent
+                输出、直接交互，结束后继续追加 Prompt。
               </p>
               {(
                 [
@@ -215,32 +209,10 @@ export default function SettingsPanel({
                 系统通知需要在 macOS 通知设置中允许
                 Grove；关闭应用后任务不会自动恢复执行。
               </p>
-              <label className="agent-config">
-                Agent 配置（JSON）
-                <textarea
-                  aria-label="Agent 配置（JSON）"
-                  rows={12}
-                  spellCheck={false}
-                  value={agentConfig}
-                  onChange={(event) => setAgentConfig(event.target.value)}
-                />
-              </label>
-              <button
-                className="primary-button"
-                onClick={() => {
-                  try {
-                    onChange({
-                      agents: validateAgents(JSON.parse(agentConfig)),
-                    });
-                    setConfigMessage("Agent 配置已应用");
-                  } catch (failure) {
-                    setConfigMessage(String(failure));
-                  }
-                }}
-              >
-                应用 Agent 配置
-              </button>
-              {configMessage && <p role="status">{configMessage}</p>}
+              <AgentManager
+                agents={settings.agents}
+                onSave={(agents) => onChange({ agents })}
+              />
             </>
           )}
           {section === "布局" && (

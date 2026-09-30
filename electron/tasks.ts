@@ -1,48 +1,44 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { spawn, type ChildProcess } from "node:child_process";
+import { stripVTControlCharacters } from "node:util";
 import type {
   AgentProfile,
   AgentTask,
   Project,
   RemoteConnection,
 } from "../shared/types";
-import { shellQuote, sshArgs } from "./remote";
+import { shellQuote } from "./remote";
 import { validateAgents } from "../shared/preferences";
+import type { TaskTerminal, TaskTerminalEvents } from "./task-terminal";
 
-export function taskCommand(
+type TerminalFactory = (
+  task: AgentTask,
   project: Project,
-  agent: AgentProfile,
-  prompt: string,
-  remote?: RemoteConnection,
-) {
-  const args = agent.args.map((arg) =>
-    arg.replaceAll("{prompt}", () => prompt),
-  );
-  if (!project.remoteId)
-    return { executable: agent.executable, args, cwd: project.path };
-  if (!remote || remote.id !== project.remoteId)
-    throw new Error("远端连接配置不存在");
-  const command = `cd ${shellQuote(project.path)} && exec ${[agent.executable, ...args].map(shellQuote).join(" ")}`;
-  return {
-    executable: "/usr/bin/ssh",
-    args: [...sshArgs(remote), `sh -lc ${shellQuote(command)}`],
-    cwd: undefined,
-  };
+  remote: RemoteConnection | undefined,
+  events: TaskTerminalEvents,
+) => Promise<TaskTerminal>;
+export function taskCommand(agent: AgentProfile, prompt: string) {
+  return [
+    agent.executable,
+    ...agent.args.map((arg) => arg.replaceAll("{prompt}", () => prompt)),
+  ]
+    .map(shellQuote)
+    .join(" ");
 }
-
 export class TaskManager {
   private records: AgentTask[] = [];
-  private processes = new Map<string, ChildProcess>();
+  private sessions = new Map<string, TaskTerminal>();
+  private rawOutputs = new Map<string, string>();
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private writes: Promise<void> = Promise.resolve();
   private closing = false;
   constructor(
     private file: string,
     private changed: (task: AgentTask) => void,
     private completed: (task: AgentTask) => void,
+    private openTerminal: TerminalFactory,
   ) {}
-
   async load() {
     try {
       const records = JSON.parse(await fs.readFile(this.file, "utf8"));
@@ -52,20 +48,19 @@ export class TaskManager {
       if (error.code !== "ENOENT") throw error;
     }
     for (const task of this.records) {
+      task.terminalId = undefined;
       if (task.status === "running") {
         task.status = "interrupted";
         task.finishedAt = new Date().toISOString();
         task.output +=
-          "\nGrove 上次退出时任务尚未完成，请检查执行目标后重新创建任务。";
+          "\nGrove 上次退出时任务尚未完成，请检查执行目标后新建任务。";
       }
     }
     await this.save();
   }
-
   list() {
     return this.records;
   }
-
   private save() {
     const snapshot = JSON.stringify(this.records, null, 2);
     const write = this.writes
@@ -78,7 +73,51 @@ export class TaskManager {
     this.writes = write;
     return write;
   }
-
+  private validatePrompt(prompt: string) {
+    if (
+      typeof prompt !== "string" ||
+      !prompt.trim() ||
+      prompt.length > 32000 ||
+      prompt.includes("\0")
+    )
+      throw new Error("请输入任务描述（最多 32000 字）");
+  }
+  private append(task: AgentTask, data: string) {
+    const raw = ((this.rawOutputs.get(task.id) || task.output) + data).slice(
+      -100000,
+    );
+    this.rawOutputs.set(task.id, raw);
+    task.output = stripVTControlCharacters(raw);
+    if (!this.timers.has(task.id))
+      this.timers.set(
+        task.id,
+        setTimeout(() => {
+          this.timers.delete(task.id);
+          this.changed(task);
+        }, 100),
+      );
+  }
+  private async finish(task: AgentTask, code: number, interrupted = false) {
+    if (task.status !== "running") return;
+    clearTimeout(this.timers.get(task.id));
+    this.timers.delete(task.id);
+    task.status =
+      interrupted || this.closing
+        ? "interrupted"
+        : code === 0
+          ? "succeeded"
+          : "failed";
+    task.exitCode = code;
+    task.finishedAt = new Date().toISOString();
+    const snapshot = { ...task };
+    try {
+      await this.save();
+    } catch (error) {
+      this.append(task, `\n保存任务记录失败：${String(error)}`);
+    }
+    this.changed(task);
+    if (!this.closing) this.completed(snapshot);
+  }
   async create(
     input: { title: string; prompt: string },
     project: Project,
@@ -86,26 +125,21 @@ export class TaskManager {
     remote?: RemoteConnection,
   ) {
     if (this.closing) throw new Error("应用正在退出");
-    if (this.processes.size >= 8) throw new Error("最多同时执行 8 个任务");
+    if (this.records.filter((task) => task.status === "running").length >= 8)
+      throw new Error("最多同时执行 8 个任务");
+    this.validatePrompt(input.prompt);
     if (
-      !input ||
       typeof input.title !== "string" ||
       !input.title.trim() ||
-      input.title.length > 200 ||
-      typeof input.prompt !== "string" ||
-      !input.prompt.trim() ||
-      input.prompt.length > 32000 ||
-      input.prompt.includes("\0")
+      input.title.length > 200
     )
-      throw new Error(
-        "请输入任务标题（最多 200 字）和任务描述（最多 32000 字）",
-      );
-    validateAgents([agent]);
-    const command = taskCommand(project, agent, input.prompt, remote);
+      throw new Error("请输入任务标题（最多 200 字）");
+    const profile = validateAgents([agent])[0];
     const task: AgentTask = {
       id: randomUUID(),
       title: input.title.trim(),
       prompt: input.prompt,
+      prompts: [input.prompt],
       projectId: project.id,
       projectName: project.name,
       target: remote
@@ -113,6 +147,7 @@ export class TaskManager {
         : project.path,
       remote: !!project.remoteId,
       agentName: agent.name,
+      agent: profile,
       status: "running",
       output: "",
       createdAt: new Date().toISOString(),
@@ -125,64 +160,68 @@ export class TaskManager {
       throw error;
     }
     this.changed(task);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const append = (data: string) => {
-      task.output = (task.output + data).slice(-100000);
-      if (!timer)
-        timer = setTimeout(() => {
-          timer = undefined;
-          this.changed(task);
-        }, 100);
-    };
-    const finish = async (code: number | null, error?: Error) => {
-      if (task.status !== "running") return;
-      if (timer) clearTimeout(timer);
-      this.processes.delete(task.id);
-      task.status = this.closing
-        ? "interrupted"
-        : code === 0 && !error
-          ? "succeeded"
-          : "failed";
-      task.finishedAt = new Date().toISOString();
-      if (code !== null) task.exitCode = code;
-      if (error)
-        task.output = (task.output + `\n${error.message}`).slice(-100000);
-      try {
-        await this.save();
-      } catch (failure) {
-        task.output += `\n保存任务记录失败：${String(failure)}`;
-      }
-      this.changed(task);
-      if (!this.closing) this.completed(task);
-    };
     try {
-      const child = spawn(command.executable, command.args, {
-        cwd: command.cwd,
-        env: process.env,
-        detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
+      const session = await this.openTerminal(task, project, remote, {
+        output: (data) => this.append(task, data),
+        complete: (code) => {
+          void this.finish(task, code);
+        },
+        exit: (code) => {
+          this.sessions.delete(task.id);
+          task.terminalId = undefined;
+          if (task.status === "running") void this.finish(task, code, true);
+          else {
+            this.changed(task);
+            void this.save().catch(() => {});
+          }
+        },
       });
-      this.processes.set(task.id, child);
-      child.stdout?.setEncoding("utf8");
-      child.stderr?.setEncoding("utf8");
-      child.stdout?.on("data", append);
-      child.stderr?.on("data", append);
-      child.once("error", (error) => void finish(null, error));
-      child.once("close", (code) => void finish(code));
+      this.sessions.set(task.id, session);
+      task.terminalId = session.id;
+      await session.ready;
+      await this.save();
+      this.changed(task);
+      session.run(taskCommand(profile, input.prompt));
     } catch (error) {
-      await finish(null, error as Error);
+      this.append(task, `\n${String(error)}`);
+      await this.finish(task, 1);
     }
     return task;
   }
-
+  async continue(id: string, prompt: string) {
+    if (this.closing) throw new Error("应用正在退出");
+    this.validatePrompt(prompt);
+    const task = this.records.find((record) => record.id === id);
+    const session = this.sessions.get(id);
+    if (!task || !session || !task.agent || !task.terminalId)
+      throw new Error("任务终端已关闭，请新建任务");
+    if (task.status === "running")
+      throw new Error("Agent 正在执行，请在终端中交互");
+    if (
+      this.records.filter((record) => record.status === "running").length >= 8
+    )
+      throw new Error("最多同时执行 8 个任务");
+    const previous = { ...task };
+    task.prompts = [...(task.prompts || [task.prompt]), prompt];
+    task.status = "running";
+    task.finishedAt = undefined;
+    task.exitCode = undefined;
+    try {
+      await this.save();
+      session.run(taskCommand(task.agent, prompt));
+    } catch (error) {
+      Object.assign(task, previous);
+      if (!this.sessions.has(id)) task.terminalId = undefined;
+      await this.save();
+      throw error;
+    }
+    this.changed(task);
+    return task;
+  }
   close() {
     this.closing = true;
-    for (const child of this.processes.values()) {
-      try {
-        if (child.pid) process.kill(-child.pid, "SIGTERM");
-      } catch {
-        child.kill();
-      }
-    }
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+    for (const session of this.sessions.values()) session.close();
   }
 }

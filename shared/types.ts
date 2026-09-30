@@ -95,12 +95,15 @@ export interface SearchHit {
   text: string;
 }
 export interface TerminalSession {
+  taskId?: string;
   id: string;
   projectId: string;
   title: string;
   exited?: boolean;
 }
 export interface GroveAPI {
+  continueTask(id: string, prompt: string): Promise<AgentTask>;
+  onTerminalCreated(callback: (session: TerminalSession) => void): () => void;
   tasks(): Promise<AgentTask[]>;
   createTask(input: {
     title: string;
@@ -189,6 +192,9 @@ export interface AgentProfile {
   args: string[];
 }
 export interface AgentTask {
+  terminalId?: string;
+  agent?: AgentProfile;
+  prompts?: string[];
   id: string;
   title: string;
   prompt: string;

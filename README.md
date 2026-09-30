@@ -6,10 +6,10 @@
 
 ## 开始使用
 
-从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.13) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.13/`。
+从 [GitHub Releases](https://github.com/lyuke/grove/releases/tag/v0.1.14) 下载对应架构的 DMG，将 Grove 拖到 Applications 后启动。也提供更小的 `.tar.xz` 包，解压后将 Grove.app 放入 Applications。本地构建位于 `release/0.1.14/`。
 
-- Apple Silicon：`Grove-0.1.13-arm64.dmg`
-- Intel：`Grove-0.1.13-x64.dmg`
+- Apple Silicon：`Grove-0.1.14-arm64.dmg`
+- Intel：`Grove-0.1.14-x64.dmg`
 
 当前为试用构建，未使用 Apple Developer ID 签名或公证。
 
@@ -19,7 +19,7 @@
 
 本地项目的 Git 操作使用本机 Git。Git 身份、签名配置和提交钩子沿用你的仓库设置；需要交互认证或签名时可以在终端执行提交。本地搜索程序 ripgrep 已随安装包附带，远端依赖见下文。
 
-本版构建与测试详情见 [VERIFY-0.1.13.md](VERIFY-0.1.13.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
+本版构建与测试详情见 [VERIFY-0.1.14.md](VERIFY-0.1.14.md)，性能对比见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 ## 远端项目
 
@@ -56,9 +56,11 @@
 
 `theme` 支持 `dark`、`light`、`nord`、`catppuccin`；`colors` 支持 `shared/preferences.ts` 中列出的界面颜色，格式为 `#RRGGBB` 或 `#RRGGBBAA`。未指定项沿用基础主题；每次导入替换自定义颜色。编辑器语法配色和终端 ANSI 配色仍使用基础主题。
 
-任务列点击「创建任务」，填写标题、描述并选择项目和 Agent，点击「分配并执行」。本地项目启动本机进程，远端项目复用 SSH 配置在远端目录执行。任务列可以通过标题栏按钮收起，拖动右下角调整宽度。状态和最近 100,000 字符输出保存在本机 `tasks.json`，最多同时执行 8 个任务。退出码 0 表示进程正常完成，其他退出码或启动错误表示失败，实际修改仍需检查验收。
+任务列点击「创建任务」，填写标题、描述并选择项目和 Agent，点击「分配并执行」。每个任务创建独立 PTY 终端并自动显示；远端项目复用 SSH 配置，在远端目录运行。点击「进入任务终端」可查看实时输出、输入内容、响应 Agent 提问或直接执行命令。Agent 退出后终端继续保留，在任务详情填写「追加 Prompt」可在同一终端再次启动原 Agent 命令；每次执行记录都保留在同一任务中。追加执行保留终端与目录，不自动恢复模型对话上下文；如需连续对话，可配置交互式 Agent 并在终端内继续输入。交互式 Agent 保持运行时，任务也保持执行中，退出进程后才发送完成通知。
 
-设置 → 任务与 Agent 可编辑命令配置，默认提供 Codex 与 Claude Code；`executable` 是目标机器上的程序名或绝对路径，`args` 是参数数组，必须包含 `{prompt}`。参数以字面值传递，不进行 Shell 展开。CLI 需要在目标机器预先安装、登录，配置适合非交互执行的权限；远端程序不在登录 Shell 的 PATH 中时请指定绝对路径。
+任务终端使用 `/bin/bash` 和 `base64`，本地继承 Grove 获取的 PATH，远端通过登录 Shell 获取环境，不加载交互式 Bash 配置。手动命令正在运行或终端有未提交输入时，不会插入新的任务命令。关闭终端后保留任务历史，继续执行需新建任务。任务列可以收起、调整宽度；状态与最近 100,000 字符输出保存到本机 `tasks.json`，最多同时执行 8 个任务。退出码 0 表示进程正常完成，实际修改仍需检查验收。
+
+设置 → 任务与 Agent → Agent 管理，通过表单新增、编辑或删除 Agent，填写名称、可执行程序和逐项启动参数，然后点击「保存 Agent 配置」。支持一键添加 Codex / Claude Code 预设，无需编辑 JSON。每行是一个独立参数，不需要额外引号，至少一个参数包含 `{prompt}`。参数以字面值传递，不进行 Shell 展开。CLI 需在目标机器预先安装并登录，程序不在 PATH 中时可填写绝对路径。已创建任务保留创建时的 Agent 配置，修改或删除配置不影响现有任务。
 
 完成和失败都会触发声音与系统通知，可分别关闭。通知显示依赖 macOS 对 Grove 的通知授权，点击通知会打开任务列。应用关闭时会结束本机执行进程；SSH 断开不保证远端及其派生进程已终止。重新启动会将未完成记录标记为中断，不自动重试，需检查远端执行情况后再创建任务。
 

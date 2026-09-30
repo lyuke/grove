@@ -8,6 +8,7 @@ import {
   Notification,
 } from "electron";
 import { TaskManager } from "./tasks";
+import { openTaskTerminal } from "./task-terminal";
 import {
   defaultAgents,
   validateAgents,
@@ -99,7 +100,12 @@ function projectCall<T = any>(
 }
 const terminals = new Map<
   string,
-  { info: TerminalSession; process: pty.IPty; buffer: string }
+  {
+    info: TerminalSession;
+    process: pty.IPty;
+    buffer: string;
+    input?: () => void;
+  }
 >();
 const locks = new Map<string, Promise<unknown>>();
 const settingsFile = () => path.join(app.getPath("userData"), "workspace.json");
@@ -216,6 +222,8 @@ function setupIPC() {
       if (taskLoadError) throw taskLoadError;
       return tasks.list();
     },
+    continueTask: (id, prompt) =>
+      locked("create-task", () => tasks.continue(id, prompt)),
     createTask: (input) =>
       locked("create-task", async () => {
         if (taskLoadError) throw taskLoadError;
@@ -696,7 +704,10 @@ function setupIPC() {
     terminalAttach: (id) => terminal(id).buffer,
     terminalWrite: (id, data) => {
       const t = terminal(id);
-      if (!t.info.exited && typeof data === "string") t.process.write(data);
+      if (!t.info.exited && typeof data === "string") {
+        t.input?.();
+        t.process.write(data);
+      }
     },
     terminalResize: (id, cols, rows) => {
       const t = terminal(id);
@@ -1004,6 +1015,52 @@ app.whenReady().then(async () => {
         notification.show();
       }
     },
+    async (task, project, remote, events) => {
+      let entry:
+        | {
+            info: TerminalSession;
+            process: pty.IPty;
+            buffer: string;
+            input?: () => void;
+          }
+        | undefined;
+      let buffer = "";
+      let exited = false;
+      const session = await openTaskTerminal(project, remote, {
+        output(data) {
+          buffer = (buffer + data).slice(-200000);
+          if (entry) {
+            entry.buffer = buffer;
+            send("terminalData", { id: entry.info.id, data });
+          }
+          events.output(data);
+        },
+        complete: events.complete,
+        exit(code) {
+          exited = true;
+          if (entry) {
+            entry.info.exited = true;
+            send("terminalExit", { id: entry.info.id, exitCode: code });
+          }
+          events.exit(code);
+        },
+      });
+      entry = {
+        info: {
+          id: session.id,
+          projectId: project.id,
+          taskId: task.id,
+          title: `${task.agentName} · ${task.title}`,
+          exited,
+        },
+        process: session.process,
+        buffer,
+        input: session.input,
+      };
+      terminals.set(session.id, entry);
+      send("terminalCreated", entry.info);
+      return session;
+    },
   );
   try {
     await tasks.load();
@@ -1018,6 +1075,7 @@ app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
   tasks?.close();
   for (const client of remoteClients.values()) client.close();
-  for (const t of terminals.values()) if (!t.info.exited) t.process.kill();
+  for (const t of terminals.values())
+    if (!t.info.exited && !t.info.taskId) t.process.kill();
   for (const w of watchers.values()) void w.close();
 });

@@ -13,9 +13,11 @@ const statuses = {
 export default function TaskPanel({
   settings,
   onClose,
+  onOpenTerminal,
 }: {
   settings: Settings;
   onClose(): void;
+  onOpenTerminal(task: AgentTask): Promise<void>;
 }) {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [creating, setCreating] = useState(false);
@@ -26,6 +28,7 @@ export default function TaskPanel({
   const [projectId, setProjectId] = useState("");
   const [agentId, setAgentId] = useState("");
   const [selected, setSelected] = useState("");
+  const [followup, setFollowup] = useState("");
   const agents = settings.agents || defaultAgents;
   const target =
     settings.projects.find((project) => project.id === projectId) ||
@@ -129,6 +132,7 @@ export default function TaskPanel({
                 setCreating(false);
                 setTitle("");
                 setPrompt("");
+                if (task.terminalId) await onOpenTerminal(task);
               } catch (failure) {
                 setError(String(failure));
               } finally {
@@ -241,6 +245,7 @@ export default function TaskPanel({
               aria-pressed={selected === task.id}
               onClick={() => {
                 setSelected(selected === task.id ? "" : task.id);
+                setFollowup("");
                 setCreating(false);
               }}
             >
@@ -263,6 +268,72 @@ export default function TaskPanel({
             <h3>{detail.title}</h3>
             <p className="task-target">{detail.target}</p>
             <p className="task-description">{detail.prompt}</p>
+            <button
+              className="secondary-button"
+              disabled={!detail.terminalId}
+              onClick={() =>
+                void onOpenTerminal(detail).catch((failure) =>
+                  setError(String(failure)),
+                )
+              }
+            >
+              进入任务终端
+            </button>
+            {detail.terminalId ? (
+              <form
+                className="task-form"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (busy) return;
+                  setBusy(true);
+                  setError("");
+                  try {
+                    const task = await window.grove.continueTask(
+                      detail.id,
+                      followup,
+                    );
+                    setFollowup("");
+                    await onOpenTerminal(task);
+                  } catch (failure) {
+                    setError(String(failure));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <label>
+                  追加 Prompt
+                  <textarea
+                    required
+                    maxLength={32000}
+                    rows={3}
+                    value={followup}
+                    onChange={(event) => setFollowup(event.target.value)}
+                    placeholder="输入下一步任务…"
+                  />
+                </label>
+                <button
+                  className="primary-button"
+                  disabled={busy || detail.status === "running"}
+                  type="submit"
+                >
+                  继续执行
+                </button>
+                <p className="task-hint">
+                  每次追加会在同一终端启动该 Agent
+                  命令。执行中可进入终端直接交互。
+                </p>
+              </form>
+            ) : (
+              <p className="task-hint">
+                终端已关闭，保留执行记录；再次执行请创建新任务。
+              </p>
+            )}
+            {(detail.prompts || []).slice(1).map((prompt, index) => (
+              <p className="task-description" key={index}>
+                追加 {index + 1}：{prompt}
+              </p>
+            ))}
             <p>
               {statuses[detail.status]}
               {detail.exitCode !== undefined
@@ -273,7 +344,8 @@ export default function TaskPanel({
               {detail.output || "等待 Agent 输出…"}
             </pre>
             <p className="task-hint">
-              显示最近 100,000 个字符。完成状态根据 Agent 进程退出码判断。
+              终端显示实时执行内容；此处保留最近输出。Agent
+              退出后通知完成，终端继续保留。
             </p>
           </section>
         )}
